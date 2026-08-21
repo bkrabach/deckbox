@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block content %}
+  <div class="fileview" data-kind="{{ kind }}">
+    <div class="fileview-head">
+      <span class="fileview-icon kind-{{ kind }}">{{ icon(kind) }}</span>
+      <div class="fileview-titles">
+        <h1 class="fileview-name">{{ title }}</h1>
+        <div class="fileview-sub">
+          <span class="badge badge-kind">{{ kind }}</span>
+          <span class="fileview-size">{{ (size / 1024)|round(1) }} KB</span>
+        </div>
+      </div>
+      <div class="fileview-actions">
+        {% if kind == "html" %}
+          <a class="btn" href="{{ raw_url }}" target="_blank" rel="noopener">Open ↗</a>
+        {% endif %}
+        <a class="btn btn-ghost" href="{{ raw_url }}" target="_blank" rel="noopener">Raw</a>
+        <a class="btn btn-primary" href="{{ download_url }}">Download</a>
+      </div>
+    </div>
+
+    {% if render_error %}
+      <div class="notice notice-warn">{{ render_error }}</div>
+    {% endif %}
+
+    {% if mode == "inline" and content_html %}
+      <section class="content-card {{ 'is-dot' if kind == 'dot' else '' }}">
+        {{ content_html|safe }}
+      </section>
+
+    {% elif mode == "iframe" %}
+      <section class="frame-card">
+        {% if kind == "html" %}
+          <div class="frame-banner">
+            <span>Sandboxed preview of an HTML file.</span>
+            <a href="{{ raw_url }}" target="_blank" rel="noopener">Open raw ↗</a>
+          </div>
+        {% endif %}
+        <iframe
+          class="doc-frame {{ 'pdf-frame' if kind == 'pdf' else 'html-frame' }}"
+          src="{{ raw_url }}"
+          title="{{ title }}"
+          {% if kind == 'html' %}sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"{% endif %}
+        ></iframe>
+      </section>
+
+    {% elif mode == "image" %}
+      <section class="image-card">
+        <img src="{{ raw_url }}" alt="{{ title }}" loading="lazy">
+      </section>
+
+    {% else %}
+      <section class="download-card">
+        <span class="download-icon kind-{{ kind }}">{{ icon(kind) }}</span>
+        <p class="download-msg">
+          {% if render_error %}{{ render_error }}{% else %}No inline preview for this file type.{% endif %}
+        </p>
+        <a class="btn btn-primary" href="{{ download_url }}">Download {{ title }}</a>
+      </section>
+    {% endif %}
+  </div>
+{% endblock %}

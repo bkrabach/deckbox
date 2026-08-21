@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+
+{% block topbar_extra %}
+  <div class="filter-wrap">
+    <svg class="filter-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+    <input id="filter" class="filter" type="text" placeholder="Filter…" autocomplete="off" spellcheck="false" aria-label="Filter files">
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div class="listing" data-listing>
+    {% if listing.entries %}
+      <ul class="entries" role="list">
+        {% for e in listing.entries %}
+          <li class="entry {{ 'is-dir' if e.is_dir else 'is-file' }}" data-name="{{ e.name|lower }}">
+            <a class="entry-link" href="/view/{{ e.rel }}">
+              <span class="entry-icon kind-{{ e.kind }}">{{ icon(e.kind) }}</span>
+              <span class="entry-name">{{ e.name }}</span>
+              <span class="entry-meta">
+                {% if e.is_dir %}
+                  <span class="badge badge-folder">folder</span>
+                {% else %}
+                  <span class="entry-size">{{ e.size_human }}</span>
+                {% endif %}
+                <span class="entry-mtime">{{ e.mtime_human }}</span>
+              </span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="no-match" hidden>No files match your filter.</p>
+    {% else %}
+      <div class="empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <p>This folder is empty.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if readme_html %}
+    <section class="readme-card content-card">
+      <div class="readme-head">
+        <span class="readme-tag">README</span>
+      </div>
+      {{ readme_html|safe }}
+    </section>
+  {% endif %}
+{% endblock %}

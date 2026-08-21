@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "deckbox"
+version = "0.1.0"
+description = "A pleasant, modern web viewer for a folder of files — markdown, PDF, docx, JSON, HTML, and elegant GraphViz DOT rendering."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "bkrabach" }]
+keywords = ["files", "viewer", "web", "markdown", "graphviz", "dot", "browser"]
+classifiers = [
+    "Environment :: Web Environment",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "jinja2>=3.1.0",
+    "pyyaml>=6.0",
+    "python-multipart>=0.0.9",
+    "markdown>=3.7",
+    "pymdown-extensions>=10.7",
+    "pygments>=2.18.0",
+    "mammoth>=1.8.0",
+    "python-pam>=2.0.2",
+    "six>=1.16.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/bkrabach/deckbox"
+Repository = "https://github.com/bkrabach/deckbox"
+
+[project.scripts]
+deckbox = "deckbox.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deckbox"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/deckbox", "README.md", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.11"
