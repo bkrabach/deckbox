@@ -28,7 +28,9 @@ _RESET = "\033[0m"
 
 def _add_run_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--dir", default=None, metavar="PATH",
+        "--dir",
+        default=None,
+        metavar="PATH",
         help="Directory to serve (alternative to the positional PATH)",
     )
     parser.add_argument("--host", default=None, help="Bind address (default 0.0.0.0)")
@@ -217,8 +219,83 @@ def config_cmd(args: argparse.Namespace) -> int:
         path = save_config_file(current)
         print(f"{_GREEN}✓{_RESET} set {key} = {parsed}  ({path})")
         return 0
+    if args.action == "unset":
+        key = args.key
+        if key not in DEFAULTS:
+            print(f"error: unknown key '{key}'. Known: {', '.join(DEFAULTS)}", file=sys.stderr)
+            return 1
+        current = load_config_file()
+        if key not in current:
+            print(f"{_DIM}·{_RESET} {key} was not set (already using default)")
+            return 0
+        del current[key]
+        path = save_config_file(current)
+        print(f"{_GREEN}✓{_RESET} unset {key} — reverted to default  ({path})")
+        return 0
     print("error: unknown config action", file=sys.stderr)
     return 2
+
+
+def _served_url(cfg: ResolvedConfig) -> str:
+    """A browser-openable URL for the resolved host/port.
+
+    0.0.0.0 / :: are bind-all addresses, not browsable — map them to localhost.
+    """
+    host = cfg.host
+    if host in ("0.0.0.0", "::", ""):
+        host = "localhost"
+    elif ":" in host:  # bracket IPv6 literals
+        host = f"[{host}]"
+    return f"http://{host}:{cfg.port}"
+
+
+def open_cmd(args: argparse.Namespace) -> int:
+    import webbrowser
+
+    cfg = resolve(directory=_chosen_dir(args), host=args.host, port=args.port)
+    url = _served_url(cfg)
+    print(f"{_GREEN}✓{_RESET} opening {url}")
+    if not webbrowser.open(url):
+        print(f"{_DIM}(could not launch a browser; open {url} manually){_RESET}")
+    return 0
+
+
+def update(args: argparse.Namespace) -> int:
+    import shutil
+    import subprocess
+
+    source = "git+https://github.com/bkrabach/deckbox"
+    uv = shutil.which("uv")
+    if not uv:
+        print("error: 'uv' is not on PATH.", file=sys.stderr)
+        print(
+            f"  Install uv, or reinstall manually:\n    pipx install --force {source}",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.reinstall:
+        cmd = [uv, "tool", "install", "--force", "--reinstall", source]
+    else:
+        # Respects however deckbox was installed (git or PyPI) and pulls latest.
+        cmd = [uv, "tool", "upgrade", "deckbox"]
+
+    print(f"{_DIM}$ {' '.join(cmd)}{_RESET}")
+    try:
+        result = subprocess.run(cmd, check=False)
+    except OSError as exc:
+        print(f"error: could not run uv: {exc}", file=sys.stderr)
+        return 1
+    if result.returncode == 0:
+        print(
+            f"{_GREEN}✓{_RESET} deckbox is up to date. Restart any running server/service to apply."
+        )
+        if not args.reinstall:
+            print(
+                f"{_DIM}  (If it says nothing changed but you expect the latest, "
+                f"try: deckbox update --reinstall){_RESET}"
+            )
+    return result.returncode
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -258,11 +335,24 @@ def build_parser() -> argparse.ArgumentParser:
     set_p = config_sub.add_parser("set", help="Set a config key")
     set_p.add_argument("key", help=f"One of: {', '.join(DEFAULTS)}")
     set_p.add_argument("value")
+    unset_p = config_sub.add_parser("unset", help="Revert a config key to its default")
+    unset_p.add_argument("key", help=f"One of: {', '.join(DEFAULTS)}")
+
+    open_p = sub.add_parser("open", help="Open the served URL in a web browser")
+    _add_path_arg(open_p)
+    _add_run_flags(open_p)
+
+    update_p = sub.add_parser("update", help="Update deckbox to the latest version (via uv)")
+    update_p.add_argument(
+        "--reinstall",
+        action="store_true",
+        help="Force a clean reinstall from GitHub (use if 'upgrade' reports no change)",
+    )
 
     return parser
 
 
-_SUBCOMMANDS = frozenset({"run", "doctor", "status", "service", "config"})
+_SUBCOMMANDS = frozenset({"run", "doctor", "status", "service", "config", "open", "update"})
 
 
 def _route_argv(argv: list[str]) -> list[str]:
@@ -297,6 +387,10 @@ def main() -> None:
         sys.exit(service_cmd(args))
     if command == "config":
         sys.exit(config_cmd(args))
+    if command == "open":
+        sys.exit(open_cmd(args))
+    if command == "update":
+        sys.exit(update(args))
     # default (None) or explicit "run"
     sys.exit(run(args))
 

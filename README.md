@@ -55,11 +55,13 @@ path wins.
 | Command | Purpose |
 |---------|---------|
 | `deckbox` / `deckbox run` | Start the web server (default action) |
+| `deckbox open` | Open the served URL in a web browser |
 | `deckbox doctor` | Diagnostics: deps, served dir, graphviz, PAM, port |
 | `deckbox status` | Show resolved config, service state, and port status |
+| `deckbox update` | Update to the latest version (via `uv`) |
 | `deckbox service install` | Install & start a `systemd --user` service |
 | `deckbox service {uninstall,start,stop,restart,status,logs}` | Manage the service |
-| `deckbox config {show,path,set}` | Inspect or edit configuration |
+| `deckbox config {show,path,set,unset}` | Inspect or edit configuration |
 
 ### Run flags
 
