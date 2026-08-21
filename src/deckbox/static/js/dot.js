@@ -15,11 +15,19 @@
       canvas.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
     }
 
+    // Natural (untransformed) pixel size of the rendered SVG. We measure the
+    // real rendered element rather than reading viewBox units, because the SVG
+    // carries pt-based width/height and the CSS transform scales from rendered
+    // pixels — mixing the two units makes Fit overshoot on wide graphs.
     function baseSize() {
+      var prev = canvas.style.transform;
+      canvas.style.transform = "none";
+      var r = svg.getBoundingClientRect();
+      canvas.style.transform = prev;
+      if (r.width && r.height) return { w: r.width, h: r.height };
       var vb = svg.viewBox && svg.viewBox.baseVal;
       if (vb && vb.width) return { w: vb.width, h: vb.height };
-      var r = svg.getBoundingClientRect();
-      return { w: r.width || 1, h: r.height || 1 };
+      return { w: 1, h: 1 };
     }
 
     function fit() {

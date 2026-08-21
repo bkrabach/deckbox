@@ -85,14 +85,14 @@ def _restyle_svg(svg: str) -> str:
     # Modern font stack for all text.
     svg = _FONT_FAMILY_RE.sub(f'font-family="{_FONT_STACK}"', svg)
 
-    # Make the root <svg> fluid: keep viewBox, drop fixed width/height.
-    def _fluid(match: re.Match) -> str:
-        tag = match.group(0)
-        tag = re.sub(r'\swidth="[^"]*"', "", tag, count=1)
-        tag = re.sub(r'\sheight="[^"]*"', "", tag, count=1)
-        return tag.replace("<svg", '<svg class="dot-svg"', 1)
+    # Tag the root <svg> so the viewer can find it. We intentionally KEEP the
+    # intrinsic width/height that Graphviz emits: the SVG is placed inside an
+    # absolutely-positioned canvas and zoom/pan is applied via a CSS transform,
+    # so the element needs a real intrinsic size or it collapses to nothing.
+    def _tag(match: re.Match) -> str:
+        return match.group(0).replace("<svg", '<svg class="dot-svg"', 1)
 
-    return _SVG_OPEN_RE.sub(_fluid, svg, count=1)
+    return _SVG_OPEN_RE.sub(_tag, svg, count=1)
 
 
 def render(path: Path) -> str:

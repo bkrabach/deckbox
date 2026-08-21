@@ -62,3 +62,9 @@
     {% endif %}
   </div>
 {% endblock %}
+
+{% block scripts %}
+  {% if kind == "dot" %}
+    <script src="/static/js/dot.js" defer></script>
+  {% endif %}
+{% endblock %}
