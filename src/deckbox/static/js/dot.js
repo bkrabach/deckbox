@@ -1,25 +1,35 @@
-/* Deckbox — interactive GraphViz DOT viewer (pan / zoom / fit / download). */
+/* Deckbox — interactive GraphViz DOT viewer.
+ * Pan / zoom / fit, selectable layout engine + direction, and a node inspector.
+ */
 (function () {
   "use strict";
 
   function initViewer(viewer) {
     var stage = viewer.querySelector(".dot-stage");
     var canvas = viewer.querySelector(".dot-canvas");
-    var svg = canvas ? canvas.querySelector("svg") : null;
-    if (!stage || !canvas || !svg) return;
+    var inspector = viewer.querySelector(".dot-inspector");
+    var loading = viewer.querySelector(".dot-loading");
+    var engineSel = viewer.querySelector('[data-ctl="engine"]');
+    var rankdirSel = viewer.querySelector('[data-ctl="rankdir"]');
+    var rankdirWrap = viewer.querySelector('[data-ctl-wrap="rankdir"]');
+    if (!stage || !canvas) return;
 
+    var src = viewer.getAttribute("data-src") || "";
+    var nodes = parseNodes(viewer.getAttribute("data-nodes"));
     var scale = 1, tx = 0, ty = 0;
-    var min = 0.1, max = 8;
+    var min = 0.05, max = 8;
+    var selected = null;
+
+    function svgEl() { return canvas.querySelector("svg"); }
 
     function apply() {
       canvas.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
     }
 
-    // Natural (untransformed) pixel size of the rendered SVG. We measure the
-    // real rendered element rather than reading viewBox units, because the SVG
-    // carries pt-based width/height and the CSS transform scales from rendered
-    // pixels — mixing the two units makes Fit overshoot on wide graphs.
+    // Natural (untransformed) pixel size of the rendered SVG.
     function baseSize() {
+      var svg = svgEl();
+      if (!svg) return { w: 1, h: 1 };
       var prev = canvas.style.transform;
       canvas.style.transform = "none";
       var r = svg.getBoundingClientRect();
@@ -33,7 +43,7 @@
     function fit() {
       var sz = baseSize();
       var rect = stage.getBoundingClientRect();
-      var pad = 32;
+      var pad = 40;
       var s = Math.min((rect.width - pad) / sz.w, (rect.height - pad) / sz.h);
       scale = Math.max(min, Math.min(max, s || 1));
       tx = (rect.width - sz.w * scale) / 2;
@@ -61,34 +71,140 @@
       apply();
     }
 
-    // Wheel zoom (centered on cursor)
+    // ---- Node inspector ---------------------------------------------------
+    function nodeNameFromEl(g) {
+      var title = g.querySelector("title");
+      return title ? title.textContent.trim() : "";
+    }
+
+    function clearSelection() {
+      if (selected) { selected.classList.remove("dot-node-selected"); selected = null; }
+    }
+
+    function selectNode(g) {
+      clearSelection();
+      selected = g;
+      g.classList.add("dot-node-selected");
+      var name = nodeNameFromEl(g);
+      showInspector(name, nodes[name] || {});
+    }
+
+    function showInspector(name, attrs) {
+      if (!inspector) return;
+      var titleEl = inspector.querySelector(".dot-inspector-title");
+      var bodyEl = inspector.querySelector(".dot-inspector-body");
+      var hintEl = inspector.querySelector(".dot-inspector-hint");
+      if (titleEl) titleEl.textContent = name || "Node";
+      if (hintEl) hintEl.hidden = true;
+      bodyEl.innerHTML = "";
+
+      var keys = Object.keys(attrs);
+      // Preferred order: the human-meaningful fields first.
+      var order = ["label", "prompt", "tool_command", "condition", "goal",
+                   "shape", "model", "fidelity", "thread_id", "max_retries", "weight"];
+      keys.sort(function (a, b) {
+        var ia = order.indexOf(a), ib = order.indexOf(b);
+        if (ia === -1) ia = 999; if (ib === -1) ib = 999;
+        return ia - ib || a.localeCompare(b);
+      });
+
+      if (!keys.length) {
+        var empty = document.createElement("p");
+        empty.className = "dot-attr-empty";
+        empty.textContent = "No attributes on this node.";
+        bodyEl.appendChild(empty);
+      }
+      keys.forEach(function (k) {
+        var row = document.createElement("div");
+        row.className = "dot-attr";
+        var kEl = document.createElement("div");
+        kEl.className = "dot-attr-key";
+        kEl.textContent = k;
+        var vEl = document.createElement("div");
+        vEl.className = "dot-attr-val";
+        // Long / code-ish values get a <pre> for readability.
+        var val = String(attrs[k]);
+        if (k === "tool_command" || k === "prompt" || val.length > 60 || val.indexOf("\n") !== -1) {
+          var pre = document.createElement("pre");
+          pre.textContent = val;
+          if (k === "tool_command") pre.classList.add("is-code");
+          vEl.appendChild(pre);
+        } else {
+          vEl.textContent = val;
+        }
+        row.appendChild(kEl); row.appendChild(vEl);
+        bodyEl.appendChild(row);
+      });
+      inspector.hidden = false;
+    }
+
+    function closeInspector() {
+      if (inspector) inspector.hidden = true;
+      clearSelection();
+    }
+
+    function bindNodes() {
+      var svg = svgEl();
+      if (!svg) return;
+      svg.querySelectorAll("g.node").forEach(function (g) {
+        g.classList.add("dot-node");
+        g.addEventListener("click", function (e) {
+          e.stopPropagation();
+          selectNode(g);
+        });
+      });
+    }
+
+    // ---- Interaction ------------------------------------------------------
     stage.addEventListener("wheel", function (e) {
       e.preventDefault();
-      var factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-      zoomAt(factor, e.clientX, e.clientY);
+      zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
     }, { passive: false });
 
-    // Drag to pan
-    var dragging = false, lastX = 0, lastY = 0;
+    // Pan by dragging. Critically, we only capture the pointer AFTER movement
+    // crosses a small threshold — capturing on pointerdown would retarget the
+    // subsequent click to the stage and swallow node clicks (breaking the
+    // inspector for real users). A plain click never captures, so it reaches
+    // the node's own click handler naturally.
+    var pointerDown = false, dragging = false, moved = false;
+    var lastX = 0, lastY = 0, startX = 0, startY = 0, capturedId = null;
+
     stage.addEventListener("pointerdown", function (e) {
-      dragging = true; lastX = e.clientX; lastY = e.clientY;
-      stage.classList.add("grabbing");
-      stage.setPointerCapture(e.pointerId);
+      pointerDown = true; dragging = false; moved = false;
+      startX = lastX = e.clientX; startY = lastY = e.clientY;
     });
     stage.addEventListener("pointermove", function (e) {
-      if (!dragging) return;
+      if (!pointerDown) return;
+      if (!dragging) {
+        if (Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY) <= 3) return;
+        dragging = true; moved = true;
+        stage.classList.add("grabbing");
+        try { stage.setPointerCapture(e.pointerId); capturedId = e.pointerId; } catch (err) {}
+        lastX = e.clientX; lastY = e.clientY;
+        return;
+      }
       tx += e.clientX - lastX; ty += e.clientY - lastY;
       lastX = e.clientX; lastY = e.clientY;
       apply();
     });
-    function endDrag(e) {
-      dragging = false; stage.classList.remove("grabbing");
-      try { stage.releasePointerCapture(e.pointerId); } catch (err) {}
+    function endDrag() {
+      pointerDown = false; dragging = false; stage.classList.remove("grabbing");
+      if (capturedId !== null) {
+        try { stage.releasePointerCapture(capturedId); } catch (err) {}
+        capturedId = null;
+      }
     }
     stage.addEventListener("pointerup", endDrag);
     stage.addEventListener("pointercancel", endDrag);
 
-    // Toolbar
+    // Click on empty stage clears selection (but not after a drag).
+    stage.addEventListener("click", function (e) {
+      if (moved) return;
+      if (!e.target.closest("g.node")) closeInspector();
+    });
+    stage.addEventListener("dblclick", function (e) { zoomAt(1.5, e.clientX, e.clientY); });
+
+    // Toolbar buttons
     viewer.addEventListener("click", function (e) {
       var btn = e.target.closest("[data-act]");
       if (!btn) return;
@@ -100,19 +216,66 @@
       else if (act === "fit") fit();
       else if (act === "reset") reset();
       else if (act === "toggle-source") {
-        var src = viewer.querySelector(".dot-source");
-        if (src) src.hidden = !src.hidden;
-      } else if (act === "download") downloadSvg(svg);
+        var s = viewer.querySelector(".dot-source");
+        if (s) s.hidden = !s.hidden;
+      } else if (act === "download") downloadSvg(svgEl());
+      else if (act === "close-inspector") closeInspector();
     });
 
-    // Double-click to zoom in
-    stage.addEventListener("dblclick", function (e) { zoomAt(1.5, e.clientX, e.clientY); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeInspector();
+    });
 
-    // Initial fit once layout settles.
+    // ---- Layout controls (re-render on the server) ------------------------
+    function syncRankdirVisibility() {
+      if (rankdirWrap) rankdirWrap.style.display = (engineSel && engineSel.value === "dot") ? "" : "none";
+    }
+
+    function relayout() {
+      if (!src) return;
+      var engine = engineSel ? engineSel.value : "dot";
+      var rankdir = rankdirSel ? rankdirSel.value : "TB";
+      if (loading) loading.hidden = false;
+      var url = "/api/dot?path=" + encodeURIComponent(src) +
+                "&engine=" + encodeURIComponent(engine) +
+                "&rankdir=" + encodeURIComponent(rankdir);
+      fetch(url, { headers: { "Accept": "application/json" } })
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+          if (!res.ok || res.j.error) {
+            if (loading) { loading.hidden = false; loading.textContent = "render failed"; }
+            return;
+          }
+          canvas.innerHTML = res.j.svg;
+          if (res.j.nodes) nodes = res.j.nodes;
+          closeInspector();
+          bindNodes();
+          requestAnimationFrame(fit);
+          if (loading) { loading.hidden = true; loading.textContent = "rendering…"; }
+        })
+        .catch(function () {
+          if (loading) { loading.hidden = false; loading.textContent = "render failed"; }
+        });
+    }
+
+    if (engineSel) engineSel.addEventListener("change", function () {
+      syncRankdirVisibility(); relayout();
+    });
+    if (rankdirSel) rankdirSel.addEventListener("change", relayout);
+
+    // ---- Init -------------------------------------------------------------
+    syncRankdirVisibility();
+    bindNodes();
     requestAnimationFrame(fit);
   }
 
+  function parseNodes(attr) {
+    if (!attr) return {};
+    try { return JSON.parse(attr) || {}; } catch (e) { return {}; }
+  }
+
   function downloadSvg(svg) {
+    if (!svg) return;
     var clone = svg.cloneNode(true);
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     var data = new XMLSerializer().serializeToString(clone);
@@ -120,8 +283,7 @@
     var url = URL.createObjectURL(blob);
     var a = document.createElement("a");
     a.href = url; a.download = "graph.svg";
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 

@@ -128,8 +128,12 @@ def mode_for(kind: str) -> str:
     return KIND_MODE.get(kind, "download")
 
 
-def render_inline(path: Path, kind: str) -> str:
-    """Render an inline kind to an HTML fragment. Raises on unknown kind."""
+def render_inline(path: Path, kind: str, *, src_path: str = "") -> str:
+    """Render an inline kind to an HTML fragment. Raises on unknown kind.
+
+    ``src_path`` is the file's URL path (under /view); only the DOT renderer
+    uses it, to enable client-side re-layout via /api/dot.
+    """
     if kind == "markdown":
         from deckbox.renderers.markdown_renderer import render as render_md
 
@@ -149,5 +153,5 @@ def render_inline(path: Path, kind: str) -> str:
     if kind == "dot":
         from deckbox.renderers.dot_renderer import render as render_dot
 
-        return render_dot(path)
+        return render_dot(path, src_path=src_path)
     raise ValueError(f"not an inline kind: {kind}")

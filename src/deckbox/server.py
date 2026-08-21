@@ -68,6 +68,27 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
     async def highlight_css() -> Response:
         return Response(content=_HIGHLIGHT_CSS, media_type="text/css")
 
+    @app.get("/api/dot")
+    async def api_dot(path: str, engine: str = "dot", rankdir: str = "TB") -> JSONResponse:
+        from deckbox.renderers.dot_renderer import (
+            GraphvizNotInstalled,
+            GraphvizRenderError,
+            node_data,
+            render_svg,
+        )
+
+        target = resolve_or_404(path)
+        if target.is_dir() or file_kind(target) != "dot":
+            raise HTTPException(status_code=404, detail="Not a DOT file")
+        source = target.read_text(encoding="utf-8", errors="replace")
+        try:
+            svg = render_svg(source, engine, rankdir)
+        except GraphvizNotInstalled as exc:
+            return JSONResponse({"error": str(exc)}, status_code=503)
+        except GraphvizRenderError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
+        return JSONResponse({"svg": svg, "nodes": node_data(source), "error": None})
+
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
         return render_view(request, "")
@@ -142,7 +163,7 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
                 ctx["render_error"] = "File is too large to preview."
             else:
                 try:
-                    ctx["content_html"] = render_inline(target, kind)
+                    ctx["content_html"] = render_inline(target, kind, src_path=path)
                 except Exception as exc:  # noqa: BLE001 - surface any renderer failure
                     ctx["mode"] = "download"
                     ctx["render_error"] = f"Could not render this file: {exc}"

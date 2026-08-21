@@ -318,7 +318,7 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .content-card.is-dot { padding: 0; overflow: hidden; }
 .dot-viewer { display: flex; flex-direction: column; }
 .dot-toolbar {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 10px 12px; border-bottom: 1px solid var(--border);
   background: var(--surface-2);
 }
@@ -330,8 +330,28 @@ code { font-family: var(--font-mono); font-size: .9em; }
 }
 .dot-toolbar button:hover { background: var(--surface-3); }
 .dot-spacer { flex: 1; }
+
+/* Layout controls */
+.dot-field { display: inline-flex; align-items: center; gap: 6px; }
+.dot-field > span {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.dot-field select {
+  height: 30px; padding: 0 26px 0 10px; border-radius: 8px;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  font-family: var(--font-sans); font-size: 13px; font-weight: 550; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a94a6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+}
+.dot-field select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.dot-loading { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+
+/* Body = stage + inspector side by side */
+.dot-body { position: relative; display: flex; align-items: stretch; }
 .dot-stage {
-  position: relative; height: min(72vh, 760px);
+  position: relative; flex: 1; height: min(72vh, 760px);
   background:
     radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0) 0 0 / 22px 22px,
     #ffffff;
@@ -340,6 +360,56 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .dot-stage.grabbing { cursor: grabbing; }
 .dot-canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
 .dot-canvas .dot-svg { display: block; }
+
+/* Clickable nodes + selection highlight */
+.dot-node { cursor: pointer; }
+.dot-node ellipse, .dot-node polygon, .dot-node path { transition: filter .1s; }
+.dot-node:hover > :is(ellipse, polygon, path):first-of-type { filter: brightness(0.97); }
+.dot-node-selected > :is(ellipse, polygon, path) {
+  stroke: var(--accent) !important; stroke-width: 2.4px !important;
+}
+
+/* Node inspector drawer */
+.dot-inspector {
+  width: 340px; flex-shrink: 0; display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--surface);
+  max-height: min(72vh, 760px);
+}
+.dot-inspector[hidden] { display: none; }
+.dot-inspector-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2);
+}
+.dot-inspector-title {
+  font-weight: 680; font-size: 14px; letter-spacing: -.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+}
+.dot-inspector-close {
+  width: 26px; height: 26px; border: none; border-radius: 7px; cursor: pointer;
+  background: transparent; color: var(--text-muted); font-size: 20px; line-height: 1;
+}
+.dot-inspector-close:hover { background: var(--surface-3); color: var(--text); }
+.dot-inspector-body { overflow: auto; padding: 6px 14px 14px; }
+.dot-attr { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.dot-attr:last-child { border-bottom: none; }
+.dot-attr-key {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--accent-strong); margin-bottom: 4px;
+}
+.dot-attr-val { font-size: 13.5px; color: var(--text); word-break: break-word; }
+.dot-attr-val pre {
+  margin: 0; white-space: pre-wrap; word-break: break-word;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.55; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow: auto;
+}
+.dot-attr-val pre.is-code { background: var(--code-bg); }
+.dot-attr-empty, .dot-inspector-hint { color: var(--text-faint); font-size: 13px; padding: 10px 0; }
+@media (max-width: 720px) {
+  .dot-body { flex-direction: column; }
+  .dot-inspector { width: auto; border-left: none; border-top: 1px solid var(--border); max-height: 320px; }
+}
+
 .dot-source {
   margin: 0; max-height: 320px; overflow: auto;
   background: var(--code-bg); border-top: 1px solid var(--border);
