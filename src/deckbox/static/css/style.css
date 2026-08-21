@@ -389,6 +389,9 @@ code { font-family: var(--font-mono); font-size: .9em; }
     radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0) 0 0 / 22px 22px,
     #ffffff;
   overflow: hidden; cursor: grab; touch-action: none;
+  /* Panning and clicking nodes must not select the graph's text. The inspector
+     and source panels live outside the stage, so they stay selectable. */
+  user-select: none; -webkit-user-select: none;
 }
 .dot-stage.grabbing { cursor: grabbing; }
 .dot-canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
