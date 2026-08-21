@@ -26,6 +26,24 @@
       canvas.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
     }
 
+    // Run a layout mutation (e.g. opening/closing the inspector, which shrinks
+    // or grows the stage) while keeping whatever content was at the centre of
+    // the stage centred. When the stage width changes by Δ, shifting the pan by
+    // Δ/2 holds the centre point fixed — so the content the user was looking at
+    // stays put instead of the view sliding sideways.
+    function recenterAround(mutate) {
+      var before = stage.getBoundingClientRect();
+      mutate();
+      var after = stage.getBoundingClientRect();
+      var dw = after.width - before.width;
+      var dh = after.height - before.height;
+      if (dw || dh) {
+        tx += dw / 2;
+        ty += dh / 2;
+        apply();
+      }
+    }
+
     // Natural (untransformed) pixel size of the rendered SVG.
     function baseSize() {
       var svg = svgEl();
@@ -86,7 +104,10 @@
       selected = g;
       g.classList.add("dot-node-selected");
       var name = nodeNameFromEl(g);
-      showInspector(name, nodes[name] || {});
+      // Opening the inspector (if it was hidden) shrinks the stage; keep the
+      // centred content centred. Switching between nodes leaves it visible, so
+      // there is no width change and no shift.
+      recenterAround(function () { showInspector(name, nodes[name] || {}); });
     }
 
     function showInspector(name, attrs) {
@@ -139,7 +160,9 @@
     }
 
     function closeInspector() {
-      if (inspector) inspector.hidden = true;
+      if (inspector && !inspector.hidden) {
+        recenterAround(function () { inspector.hidden = true; });
+      }
       clearSelection();
     }
 

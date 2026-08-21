@@ -279,6 +279,10 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .btn:hover { background: var(--surface-2); text-decoration: none; }
 .btn:active { transform: translateY(1px); }
 .btn-ghost { background: transparent; }
+.btn-ic { width: 15px; height: 15px; }
+.btn.is-copied { border-color: #12a594; color: #0e8174; }
+.btn.is-error { border-color: #e5484d; color: #e5484d; }
+[data-theme="dark"] .btn.is-copied { color: #3dd9c4; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn-primary:hover { background: var(--accent-strong); }
 @media (max-width: 560px) { .fileview-actions .btn-ghost { display: none; } }

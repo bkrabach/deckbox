@@ -128,10 +128,10 @@ def mode_for(kind: str) -> str:
     return KIND_MODE.get(kind, "download")
 
 
-# Default content width per kind. Document-like prose reads best constrained;
-# everything else uses the full width of the viewport. Users can override this
-# per view with the width toggle.
-_READABLE_KINDS = frozenset({"markdown", "docx", "download"})
+# Default content width per kind. Document-like content (prose, code, data)
+# reads best constrained; visual/interactive kinds use the full viewport width.
+# Users can override this per view with the width toggle.
+_READABLE_KINDS = frozenset({"markdown", "docx", "download", "code", "json"})
 
 
 def default_width(kind: str) -> str:
