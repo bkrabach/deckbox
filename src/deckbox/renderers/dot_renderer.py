@@ -2,8 +2,12 @@
 
 Strategy for a nicer result than raw ``dot -Tsvg``:
 
-  1. Inject tasteful *default* graph/node/edge attributes (author's explicit
-     attributes still win, because our defaults are prepended).
+  1. Supply tasteful *default* graph/node/edge attributes as Graphviz
+     command-line flags (-G/-N/-E). Graphviz applies these before reading the
+     file, so the author's explicit attributes always win — and, crucially,
+     this can never corrupt the source the way text injection could (a brace in
+     a comment or string used to break the old "insert after the first {"
+     approach).
   2. Render to SVG with Graphviz.
   3. Rewrite the SVG font-family to a modern system font stack so text is crisp
      regardless of which fonts Graphviz found on the host.
@@ -22,18 +26,22 @@ _FONT_STACK = (
     "-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,Helvetica,Arial,sans-serif"
 )
 
-# Prepended right after the opening brace of the graph.
-_THEME = (
-    '  graph [bgcolor="transparent" fontname="Helvetica" fontsize=12 pad=0.35 '
-    "nodesep=0.35 ranksep=0.55];\n"
-    '  node [fontname="Helvetica" fontsize=12 shape=box style="rounded,filled" '
-    'fillcolor="#eef2f8" color="#c2ccdb" fontcolor="#1f2733" penwidth=1.0 '
-    'margin="0.22,0.14"];\n'
-    '  edge [fontname="Helvetica" fontsize=11 color="#9aa4b5" arrowsize=0.75 '
-    "penwidth=1.1];\n"
-)
+# Theme defaults, passed as `dot` command-line flags. These set the initial
+# graph/node/edge defaults; any attribute the file sets explicitly overrides
+# them, so author styling is always respected.
+_THEME_ARGS = [
+    # graph (-G)
+    "-Gbgcolor=transparent", "-Gfontname=Helvetica", "-Gfontsize=12",
+    "-Gpad=0.35", "-Gnodesep=0.35", "-Granksep=0.55",
+    # node (-N)
+    "-Nfontname=Helvetica", "-Nfontsize=12", "-Nshape=box",
+    "-Nstyle=rounded,filled", "-Nfillcolor=#eef2f8", "-Ncolor=#c2ccdb",
+    "-Nfontcolor=#1f2733", "-Npenwidth=1.0", "-Nmargin=0.22,0.14",
+    # edge (-E)
+    "-Efontname=Helvetica", "-Efontsize=11", "-Ecolor=#9aa4b5",
+    "-Earrowsize=0.75", "-Epenwidth=1.1",
+]
 
-_BRACE_RE = re.compile(r"\{")
 _FONT_FAMILY_RE = re.compile(r'font-family="[^"]*"')
 _SVG_OPEN_RE = re.compile(r"<svg\b[^>]*>", re.IGNORECASE)
 
@@ -50,20 +58,12 @@ def graphviz_available() -> bool:
     return shutil.which("dot") is not None
 
 
-def _apply_theme(source: str) -> str:
-    match = _BRACE_RE.search(source)
-    if not match:
-        return source
-    idx = match.end()
-    return source[:idx] + "\n" + _THEME + source[idx:]
-
-
 def _run_dot(source: str) -> str:
     if not graphviz_available():
         raise GraphvizNotInstalled("the 'dot' binary (graphviz) is not installed")
     try:
         proc = subprocess.run(
-            ["dot", "-Tsvg"],
+            ["dot", *_THEME_ARGS, "-Tsvg"],
             input=source,
             capture_output=True,
             text=True,
@@ -99,7 +99,7 @@ def render(path: Path) -> str:
     source = path.read_text(encoding="utf-8", errors="replace")
     escaped_source = html.escape(source)
     try:
-        svg = _restyle_svg(_run_dot(_apply_theme(source)))
+        svg = _restyle_svg(_run_dot(source))
     except GraphvizNotInstalled:
         return _fallback(
             "GraphViz is not installed, so this graph can’t be drawn. "
