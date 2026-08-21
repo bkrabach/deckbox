@@ -52,4 +52,27 @@
       }
     });
   }
+
+  // ---- Content width toggle (file view) -----------------------------------
+  var fileview = document.querySelector(".fileview[data-width]");
+  var toggle = document.querySelector("[data-width-toggle]");
+  if (fileview && toggle) {
+    var buttons = Array.prototype.slice.call(toggle.querySelectorAll("[data-width-set]"));
+
+    function applyWidth(mode) {
+      fileview.setAttribute("data-width", mode);
+      buttons.forEach(function (b) {
+        b.setAttribute("aria-pressed", b.getAttribute("data-width-set") === mode ? "true" : "false");
+      });
+    }
+
+    buttons.forEach(function (b) {
+      b.addEventListener("click", function () {
+        applyWidth(b.getAttribute("data-width-set"));
+      });
+    });
+
+    // Reflect the server-provided per-kind default in the control state.
+    applyWidth(fileview.getAttribute("data-width") || "readable");
+  }
 })();

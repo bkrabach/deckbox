@@ -1,8 +1,10 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 
+{% block main_class %}container--fileview{% endblock %}
+
 {% block content %}
-  <div class="fileview" data-kind="{{ kind }}">
+  <div class="fileview" data-kind="{{ kind }}" data-width="{{ width_default }}">
     <div class="fileview-head">
       <span class="fileview-icon kind-{{ kind }}">{{ icon(kind) }}</span>
       <div class="fileview-titles">
@@ -13,6 +15,14 @@
         </div>
       </div>
       <div class="fileview-actions">
+        <div class="width-toggle" role="group" aria-label="Content width" data-width-toggle>
+          <button type="button" data-width-set="readable" title="Readable width" aria-label="Readable width">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="4" width="10" height="16" rx="1.5"/></svg>
+          </button>
+          <button type="button" data-width-set="full" title="Full width" aria-label="Full width">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M7 9 4 12l3 3M17 9l3 3-3 3"/></svg>
+          </button>
+        </div>
         {% if kind == "html" %}
           <a class="btn" href="{{ raw_url }}" target="_blank" rel="noopener">Open ↗</a>
         {% endif %}

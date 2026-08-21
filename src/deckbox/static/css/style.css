@@ -175,6 +175,15 @@ code { font-family: var(--font-mono); font-size: .9em; }
   padding: 28px 20px 64px;
 }
 
+/* File view can span the full viewport; the .fileview controls its own width. */
+.container--fileview { max-width: none; }
+
+/* Width modes for the file view. Readable = the standard centred column;
+   full = span the container (full viewport minus page gutters). */
+.fileview { margin: 0 auto; }
+.fileview[data-width="readable"] { max-width: var(--maxw); }
+.fileview[data-width="full"] { max-width: none; }
+
 /* ---- Listing ------------------------------------------------------------ */
 .entries { list-style: none; margin: 0; padding: 0;
   background: var(--surface);
@@ -237,7 +246,27 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .fileview-sub { display: flex; align-items: center; gap: 10px; margin-top: 3px;
   color: var(--text-faint); font-size: 12.5px; }
 .badge-kind { text-transform: uppercase; }
-.fileview-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.fileview-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* Width toggle (segmented control) */
+.width-toggle {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--border-strong); border-radius: 9px;
+  background: var(--surface); overflow: hidden;
+}
+.width-toggle button {
+  display: inline-grid; place-items: center;
+  width: 34px; height: 34px; border: none; cursor: pointer;
+  background: transparent; color: var(--text-faint);
+  transition: background .15s, color .15s;
+}
+.width-toggle button + button { border-left: 1px solid var(--border); }
+.width-toggle button svg { width: 17px; height: 17px; }
+.width-toggle button:hover { background: var(--surface-2); color: var(--text-muted); }
+.width-toggle button[aria-pressed="true"] {
+  background: var(--accent-soft); color: var(--accent-strong);
+}
+@media (max-width: 560px) { .width-toggle { display: none; } }
 
 .btn {
   display: inline-flex; align-items: center; gap: 6px;

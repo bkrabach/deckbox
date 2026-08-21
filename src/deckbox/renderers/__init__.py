@@ -128,6 +128,17 @@ def mode_for(kind: str) -> str:
     return KIND_MODE.get(kind, "download")
 
 
+# Default content width per kind. Document-like prose reads best constrained;
+# everything else uses the full width of the viewport. Users can override this
+# per view with the width toggle.
+_READABLE_KINDS = frozenset({"markdown", "docx", "download"})
+
+
+def default_width(kind: str) -> str:
+    """Return the default width mode for a kind: 'readable' or 'full'."""
+    return "readable" if kind in _READABLE_KINDS else "full"
+
+
 def render_inline(path: Path, kind: str, *, src_path: str = "") -> str:
     """Render an inline kind to an HTML fragment. Raises on unknown kind.
 

@@ -16,6 +16,7 @@ from deckbox.browse import PathOutsideRoot, build_crumbs, list_directory, safe_r
 from deckbox.config import ResolvedConfig
 from deckbox.renderers import (
     MAX_INLINE_BYTES,
+    default_width,
     file_kind,
     mode_for,
     render_inline,
@@ -146,6 +147,7 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
                 "title": target.name,
                 "crumbs": build_crumbs(rel),
                 "kind": kind,
+                "width_default": default_width(kind),
                 "mode": mode,
                 "rel": rel,
                 "parent_rel": str(Path(rel).parent) if Path(rel).parent != Path(".") else "",
