@@ -32,6 +32,8 @@ This puts a `deckbox` command on your PATH. `python -m deckbox` also works.
 ```bash
 cd ~/some/folder
 deckbox                 # serves this folder at http://0.0.0.0:8000
+
+deckbox ~/notes         # or point it at a folder directly (positional path)
 ```
 
 Then open <http://localhost:8000>.
@@ -39,9 +41,14 @@ Then open <http://localhost:8000>.
 Serve a specific directory or change the address:
 
 ```bash
-deckbox run --dir ~/notes --port 9000
+deckbox ~/notes --port 9000         # positional path
+deckbox run --dir ~/notes --port 9000   # --dir also works
 deckbox run --host 127.0.0.1        # localhost-only, no auth
 ```
+
+The served directory can be given as a positional `PATH` (`deckbox ~/notes`,
+`deckbox doctor ~/notes`) or with `--dir`. If both are given, the positional
+path wins.
 
 ## Commands
 

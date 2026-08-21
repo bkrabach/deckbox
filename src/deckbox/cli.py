@@ -27,7 +27,10 @@ _RESET = "\033[0m"
 
 
 def _add_run_flags(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--dir", default=None, metavar="PATH", help="Directory to serve")
+    parser.add_argument(
+        "--dir", default=None, metavar="PATH",
+        help="Directory to serve (alternative to the positional PATH)",
+    )
     parser.add_argument("--host", default=None, help="Bind address (default 0.0.0.0)")
     parser.add_argument("--port", type=int, default=None, help="Bind port (default 8000)")
     parser.add_argument("--log-level", default=None, help="uvicorn log level (default info)")
@@ -36,6 +39,21 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Disable PAM auth even for non-localhost clients (trusted networks only)",
     )
+
+
+def _add_path_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "path",
+        nargs="?",
+        default=None,
+        metavar="PATH",
+        help="Directory to serve (positional; overrides --dir if both given)",
+    )
+
+
+def _chosen_dir(args: argparse.Namespace) -> str | None:
+    """Positional PATH wins over --dir; either is a CLI-level override."""
+    return getattr(args, "path", None) or args.dir
 
 
 def _auth_required(host: str, no_auth: bool) -> bool:
@@ -50,7 +68,9 @@ def run(args: argparse.Namespace) -> int:
     from deckbox.auth import launch_user, pam_available
     from deckbox.server import create_app
 
-    cfg = resolve(directory=args.dir, host=args.host, port=args.port, log_level=args.log_level)
+    cfg = resolve(
+        directory=_chosen_dir(args), host=args.host, port=args.port, log_level=args.log_level
+    )
 
     if not cfg.directory.exists():
         print(f"error: served directory does not exist: {cfg.directory}", file=sys.stderr)
@@ -87,7 +107,7 @@ def _print_banner(cfg: ResolvedConfig, *, auth_required: bool, launcher: str) ->
 def doctor(args: argparse.Namespace) -> int:
     from deckbox.doctor import run_doctor
 
-    cfg = resolve(directory=args.dir, host=args.host, port=args.port)
+    cfg = resolve(directory=_chosen_dir(args), host=args.host, port=args.port)
     return run_doctor(cfg)
 
 
@@ -96,7 +116,7 @@ def status(args: argparse.Namespace) -> int:
 
     from deckbox import service
 
-    cfg = resolve(directory=args.dir, host=args.host, port=args.port)
+    cfg = resolve(directory=_chosen_dir(args), host=args.host, port=args.port)
     print(f"\n{_BOLD}Deckbox status{_RESET}")
     print(f"  serving directory : {cfg.directory}")
     print(f"  listen address    : {cfg.host}:{cfg.port}")
@@ -212,12 +232,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     run_p = sub.add_parser("run", help="Run the web server (default)")
+    _add_path_arg(run_p)
     _add_run_flags(run_p)
 
     doctor_p = sub.add_parser("doctor", help="Run diagnostics")
+    _add_path_arg(doctor_p)
     _add_run_flags(doctor_p)
 
     status_p = sub.add_parser("status", help="Show config, service, and port status")
+    _add_path_arg(status_p)
     _add_run_flags(status_p)
 
     service_p = sub.add_parser("service", help="Manage the systemd --user service")
@@ -239,9 +262,31 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+_SUBCOMMANDS = frozenset({"run", "doctor", "status", "service", "config"})
+
+
+def _route_argv(argv: list[str]) -> list[str]:
+    """Default to the `run` subcommand so a bare PATH or bare flags work.
+
+    `deckbox ~/notes`     -> `deckbox run ~/notes`
+    `deckbox --port 9000` -> `deckbox run --port 9000`
+    `deckbox doctor ~/x`  -> unchanged (explicit subcommand)
+    `deckbox -h/--version`-> unchanged (handled by the root parser)
+    """
+    if not argv:
+        return ["run"]
+    first = argv[0]
+    if first in ("-h", "--help", "--version"):
+        return argv
+    first_positional = next((a for a in argv if not a.startswith("-")), None)
+    if first_positional is None or first_positional not in _SUBCOMMANDS:
+        return ["run", *argv]
+    return argv
+
+
 def main() -> None:
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(_route_argv(sys.argv[1:]))
 
     command = args.command
     if command == "doctor":
