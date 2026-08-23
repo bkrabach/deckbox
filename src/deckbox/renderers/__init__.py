@@ -19,7 +19,9 @@ _EXT_KIND: dict[str, str] = {
     "md": "markdown",
     "markdown": "markdown",
     "mdown": "markdown",
-    "json": "json",
+    "json": "jsonl",
+    "jsonl": "jsonl",
+    "ndjson": "jsonl",
     "dot": "dot",
     "gv": "dot",
     "pdf": "pdf",
@@ -93,6 +95,7 @@ _CODE_EXT = {
 KIND_MODE: dict[str, str] = {
     "markdown": "inline",
     "json": "inline",
+    "jsonl": "inline",
     "code": "inline",
     "docx": "inline",
     "dot": "inline",
@@ -103,7 +106,7 @@ KIND_MODE: dict[str, str] = {
 }
 
 # kinds rendered to HTML on the server
-INLINE_KINDS = frozenset({"markdown", "json", "code", "docx", "dot"})
+INLINE_KINDS = frozenset({"markdown", "json", "jsonl", "code", "docx", "dot"})
 
 # Files larger than this are not rendered inline (offered as download instead).
 MAX_INLINE_BYTES = 8 * 1024 * 1024
@@ -131,7 +134,7 @@ def mode_for(kind: str) -> str:
 # Default content width per kind. Document-like content (prose, code, data)
 # reads best constrained; visual/interactive kinds use the full viewport width.
 # Users can override this per view with the width toggle.
-_READABLE_KINDS = frozenset({"markdown", "docx", "download", "code", "json"})
+_READABLE_KINDS = frozenset({"markdown", "docx", "download", "code"})
 
 
 def default_width(kind: str) -> str:
@@ -149,6 +152,10 @@ def render_inline(path: Path, kind: str, *, src_path: str = "") -> str:
         from deckbox.renderers.markdown_renderer import render as render_md
 
         return render_md(path)
+    if kind == "jsonl":
+        from deckbox.renderers.jsonl_renderer import render as render_jsonl
+
+        return render_jsonl(path, src_path=src_path)
     if kind == "json":
         from deckbox.renderers.text_renderer import render_json
 

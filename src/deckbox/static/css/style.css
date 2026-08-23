@@ -503,3 +503,130 @@ code { font-family: var(--font-mono); font-size: .9em; }
 }
 .footer code { background: var(--surface-2); padding: .1em .4em; border-radius: 5px; }
 .footer-dot { opacity: .5; }
+
+/* ---- JSONL / JSON viewer ------------------------------------------------ */
+.content-card.is-jsonl { padding: 0; overflow: hidden; }
+.jsonl-viewer { display: flex; flex-direction: column; font-family: var(--font-mono); }
+
+.jsonl-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--surface-2);
+  font-family: var(--font-sans);
+}
+.jsonl-search-wrap { position: relative; display: flex; align-items: center; flex: 1; max-width: 420px; }
+.jsonl-search-ic { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--text-faint); pointer-events: none; }
+.jsonl-search {
+  width: 100%; height: 32px; padding: 0 30px 0 30px;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-family: var(--font-sans); font-size: 13.5px; outline: none;
+}
+.jsonl-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.jsonl-search-clear {
+  position: absolute; right: 6px; width: 22px; height: 22px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text-faint); font-size: 16px; cursor: pointer;
+}
+.jsonl-search-clear:hover { background: var(--surface-3); color: var(--text); }
+.jsonl-count { font-size: 12.5px; color: var(--text-faint); font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+.jsonl-spacer { flex: 1; }
+
+.jsonl-view-toggle { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.jsonl-view-toggle button {
+  height: 30px; padding: 0 12px; border: none; background: var(--surface); color: var(--text-muted);
+  font-family: var(--font-sans); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.jsonl-view-toggle button + button { border-left: 1px solid var(--border); }
+.jsonl-view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); }
+
+.jsonl-body { position: relative; }
+.jsonl-loading, .jsonl-error { padding: 24px; color: var(--text-faint); font-family: var(--font-sans); }
+.jsonl-error { color: #e5484d; }
+.jsonl-status {
+  padding: 6px 14px; font-size: 12px; color: var(--text-faint);
+  border-top: 1px solid var(--border); background: var(--surface-2); font-family: var(--font-sans);
+}
+
+/* Clusterize scroll area */
+.jsonl-scroll { max-height: min(72vh, 760px); overflow: auto; }
+.clusterize-content { outline: 0; }
+.clusterize-no-data { padding: 24px; color: var(--text-faint); font-family: var(--font-sans); }
+.clusterize-extra-row { visibility: hidden; }
+
+/* Rows */
+.jsonl-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 14px; border-bottom: 1px solid var(--border);
+  font-size: 12.5px; cursor: default; white-space: nowrap;
+}
+.jsonl-row[data-line]:not(.is-stub) { cursor: pointer; }
+.jsonl-row:hover { background: var(--surface-2); }
+.jsonl-row.is-open { background: var(--surface-2); }
+.jsonl-row-chev { width: 12px; color: var(--text-faint); flex-shrink: 0; }
+.jsonl-row-chev.spacer { visibility: hidden; }
+.jsonl-row-num {
+  min-width: 46px; color: var(--text-faint); text-align: right; flex-shrink: 0;
+  font-variant-numeric: tabular-nums; user-select: none;
+}
+.jsonl-row-preview { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.jsonl-row.is-stub .jsonl-row-preview { color: var(--text-faint); }
+
+.j-badge {
+  display: inline-block; padding: 1px 7px; border-radius: 999px; flex-shrink: 0;
+  background: var(--surface-3); color: var(--text-muted); font-size: 11px; font-weight: 600;
+}
+.j-badge-err { background: #e5484d; color: #fff; }
+
+/* Row detail + tree */
+.jsonl-row-detail { padding: 10px 14px 14px 34px; border-bottom: 1px solid var(--border); background: var(--code-bg); }
+.jsonl-row-actions { display: flex; gap: 6px; margin-bottom: 8px; font-family: var(--font-sans); }
+.jsonl-row-actions button {
+  height: 26px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 7px;
+  background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.jsonl-row-actions button:hover { background: var(--surface-2); }
+.jsonl-rawpre {
+  margin: 10px 0 0; padding: 12px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; max-height: 340px; overflow: auto; font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; word-break: break-word; color: var(--text);
+}
+
+.jsonl-tree { font-size: 12.5px; line-height: 1.6; }
+.j-node { }
+.j-node-head { display: flex; align-items: flex-start; gap: 2px; }
+.j-chevron {
+  width: 16px; height: 20px; border: none; background: transparent; color: var(--text-faint);
+  cursor: pointer; font-size: 10px; padding: 0; flex-shrink: 0; line-height: 20px;
+}
+.j-chevron:hover { color: var(--text); }
+.j-chevron-spacer { width: 16px; flex-shrink: 0; }
+.j-key { color: var(--accent-strong); font-weight: 600; }
+.j-val { min-width: 0; word-break: break-word; }
+.j-preview { color: var(--text-faint); }
+.j-str { color: #12a594; }
+.j-num { color: #d98c1f; }
+.j-bool { color: #2f6fed; }
+.j-null { color: var(--text-faint); font-style: italic; }
+.j-more { color: var(--text-faint); font-size: 11px; }
+.j-children { margin-left: 16px; border-left: 1px solid var(--border); padding-left: 8px; }
+.j-fetching { color: var(--text-faint); padding: 2px 0; font-style: italic; }
+.j-more-row { color: var(--text-faint); padding: 2px 0 2px 16px; font-size: 11.5px; font-style: italic; }
+[data-theme="dark"] .j-str { color: #3dd9c4; }
+[data-theme="dark"] .j-bool { color: #8b8bff; }
+
+/* Table view */
+.jsonl-table-wrap { max-height: min(72vh, 760px); overflow: auto; }
+.jsonl-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.jsonl-table th, .jsonl-table td {
+  border: 1px solid var(--border); padding: 5px 10px; text-align: left; vertical-align: top;
+  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.jsonl-table thead th {
+  position: sticky; top: 0; background: var(--surface-2); font-weight: 640; z-index: 1;
+  font-family: var(--font-sans);
+}
+.jsonl-table .j-col-num { color: var(--text-faint); text-align: right; font-variant-numeric: tabular-nums; }
+.jsonl-table tbody tr { cursor: pointer; }
+.jsonl-table tbody tr:hover { background: var(--surface-2); }
+.jsonl-table-detail > td { background: var(--code-bg); white-space: normal; }
+.jsonl-table-detail:hover { background: none; }
+.j-empty { color: var(--text-faint); }
+.jsonl-table-note { padding: 10px 14px; color: var(--text-faint); font-size: 12px; font-family: var(--font-sans); }

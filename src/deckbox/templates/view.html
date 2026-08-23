@@ -42,7 +42,7 @@
     {% endif %}
 
     {% if mode == "inline" and content_html %}
-      <section class="content-card {{ 'is-dot' if kind == 'dot' else '' }}">
+      <section class="content-card {{ 'is-dot' if kind == 'dot' else '' }}{{ 'is-jsonl' if kind == 'jsonl' else '' }}">
         {{ content_html|safe }}
       </section>
 
@@ -82,5 +82,9 @@
 {% block scripts %}
   {% if kind == "dot" %}
     <script src="/static/js/dot.js" defer></script>
+  {% endif %}
+  {% if kind == "jsonl" %}
+    <script src="/static/js/clusterize.min.js" defer></script>
+    <script src="/static/js/jsonl.js" defer></script>
   {% endif %}
 {% endblock %}

@@ -90,6 +90,57 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
             return JSONResponse({"error": str(exc)}, status_code=422)
         return JSONResponse({"svg": svg, "nodes": node_data(source), "error": None})
 
+    def _jsonl_source(path: str):
+        from deckbox import jsonl as jsonl_mod
+
+        target = resolve_or_404(path)
+        if target.is_dir() or file_kind(target) != "jsonl":
+            raise HTTPException(status_code=404, detail="Not a JSON/JSONL file")
+        backend = "json" if target.suffix.lower() == ".json" else "jsonl"
+        try:
+            return jsonl_mod.open_source(target, backend)
+        except ValueError as exc:  # e.g. JSON too large to load whole
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+
+    @app.get("/api/jsonl")
+    async def api_jsonl(path: str, offset: int = 0, limit: int = 100) -> JSONResponse:
+        src = _jsonl_source(path)
+        limit = max(1, min(limit, 500))
+        payload = {
+            "total": src.count(),
+            "offset": offset,
+            "limit": limit,
+            "rows": src.rows(offset, limit),
+        }
+        if offset == 0:
+            payload.update(src.columns())
+        return JSONResponse(payload)
+
+    @app.get("/api/jsonl/node")
+    async def api_jsonl_node(path: str, line: int, pointer: str = "") -> JSONResponse:
+        src = _jsonl_source(path)
+        try:
+            return JSONResponse(src.node(line, pointer))
+        except (KeyError, IndexError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=f"No such node: {exc}") from exc
+
+    @app.get("/api/jsonl/row")
+    async def api_jsonl_row(path: str, line: int, format: str = "pretty") -> JSONResponse:
+        src = _jsonl_source(path)
+        try:
+            text = src.raw_row(line) if format == "raw" else src.pretty_row(line)
+        except (IndexError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=f"No such row: {exc}") from exc
+        return JSONResponse({"line": line, "format": format, "text": text})
+
+    @app.get("/api/jsonl/search")
+    async def api_jsonl_search(
+        path: str, q: str, offset: int = 0, limit: int = 100
+    ) -> JSONResponse:
+        src = _jsonl_source(path)
+        limit = max(1, min(limit, 500))
+        return JSONResponse(src.search(q, offset, limit))
+
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
         return render_view(request, "")
@@ -160,7 +211,9 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
         )
 
         if mode == "inline":
-            if size > MAX_INLINE_BYTES:
+            # The JSONL viewer streams from the server and only emits a small
+            # shell here, so the whole-file byte cap must not apply to it.
+            if kind != "jsonl" and size > MAX_INLINE_BYTES:
                 ctx["mode"] = "download"
                 ctx["render_error"] = "File is too large to preview."
             else:
