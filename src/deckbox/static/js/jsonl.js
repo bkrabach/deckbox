@@ -2,15 +2,16 @@
  *
  * The server holds the file; this only ever pulls small previews and
  * lazily-fetched slices via /api/jsonl*. Rows are virtualized (Clusterize) and
- * carry a rich inline preview (key: value).
+ * carry a rich inline preview (key: value). Container tree nodes preview the
+ * same rich way as the top-level row.
  *
- * Two ways to open a row, both persistent:
- *  - the row's ▸ chevron toggles an INLINE tree, in place — multiple rows can be
- *    open at once and they survive list scrolling because expansion state lives
- *    in a model and every row is re-rendered from it (model-driven), never as
- *    orphaned DOM the virtualizer can drop.
- *  - clicking the row body opens the same row in a docked detail pane with
- *    Tree / Pretty / Raw + Copy for a focused deep-dive.
+ * Two mutually-exclusive detail modes (toggle in the toolbar):
+ *  - Inline: the row's ▸ chevron expands a tree IN PLACE. Multiple rows can be
+ *    open at once and survive list scrolling (expansion state is a model, every
+ *    row re-renders from it). Each expanded row has its own Tree/Pretty/Raw +
+ *    Copy header.
+ *  - Panel: clicking a row opens it in a docked side panel with the same
+ *    Tree/Pretty/Raw + Copy, one row at a time.
  */
 (function () {
   "use strict";
@@ -29,24 +30,23 @@
     var searchInput = viewer.querySelector(".jsonl-search");
     var searchClear = viewer.querySelector(".jsonl-search-clear");
     var viewToggle = viewer.querySelector("[data-jsonl-viewtoggle]");
+    var detailModeToggle = viewer.querySelector("[data-jsonl-detailmode]");
     if (!main || !src) return;
 
     var PAGE = 100;
     var TABLE_PAGE = 500;
     var state = {
-      total: 0,
-      rows: [],            // row previews by line
-      columns: [],
-      homogeneous: false,
-      mode: "list",
-      selected: null,      // selected line (detail pane)
-      detailTab: "tree",
-      search: "",
-      searchMatches: null, // array of line numbers when searching
-      tablePage: 0,
-      rowOpen: {},         // line -> bool (inline row expansion)
-      nodeOpen: {},        // line -> { pointer: true } open tree nodes
-      nodeCache: {},       // "line|pointer" -> node descriptor response
+      total: 0, rows: [], columns: [], homogeneous: false,
+      mode: "list",          // list | table
+      detailMode: "inline",  // inline | panel
+      selected: null,        // panel: selected line
+      detailTab: "tree",     // panel tab
+      search: "", searchMatches: null, tablePage: 0,
+      rowOpen: {},           // line -> bool (inline row expansion)
+      rowTab: {},            // line -> tree|pretty|raw (inline per-row tab)
+      rowText: {},           // line -> {pretty, raw}
+      nodeOpen: {},          // line -> { pointer: true }
+      nodeCache: {},         // "line|pointer" -> node descriptor
     };
 
     function api(path, params) {
@@ -54,11 +54,8 @@
         return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
       }).join("&");
       return fetch(path + "?" + qs, { headers: { "Accept": "application/json" } })
-        .then(function (r) {
-          return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
-        });
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); });
     }
-
     function setStatus(msg) { if (statusEl) { statusEl.textContent = msg || ""; statusEl.hidden = !msg; } }
     function esc(s) {
       return String(s).replace(/[&<>"]/g, function (c) {
@@ -66,7 +63,7 @@
       });
     }
 
-    // ---- value rendering (shared by preview + tree) -----------------------
+    // ---- value rendering --------------------------------------------------
     function valHtml(t, v, trunc) {
       if (t === "string") return '<span class="j-str">"' + esc(v) + (trunc ? "…" : "") + '"</span>';
       if (t === "number") return '<span class="j-num">' + esc(v) + "</span>";
@@ -87,8 +84,6 @@
       if (node.type === "array") return '<span class="j-badge">[] ' + node.size + "</span>";
       return "";
     }
-
-    // ---- rich row preview (key: value inline) -----------------------------
     function summaryHtml(summary) {
       if (!summary || !summary.length) return "";
       return summary.map(function (it) {
@@ -96,10 +91,15 @@
           valHtml(it.t, it.v, it.trunc) + "</span>";
       }).join('<span class="j-sep">·</span>');
     }
+    // A container's collapsed value: badge + rich key:value summary (same as a
+    // row), falling back to the shape preview.
+    function containerInner(node) {
+      var body = (node.summary && node.summary.length) ? summaryHtml(node.summary)
+        : '<span class="j-preview">' + esc(node.preview) + "</span>";
+      return typeBadge(node) + " " + body;
+    }
 
-    // ---- model-driven tree rendering (HTML strings) -----------------------
-    // Children of a node come from the node's own inlined children, its stub
-    // list, or a separately-cached fetch for its pointer.
+    // ---- model-driven tree (HTML strings) ---------------------------------
     function childrenOf(line, node) {
       if (node.children) return { items: node.children, stub: null };
       if (node.child_stubs) return { items: node.child_stubs.items, stub: node.child_stubs };
@@ -110,18 +110,14 @@
       }
       return null;
     }
-
     function nodeHtml(line, node) {
       var isContainer = node.type === "object" || node.type === "array";
       var open = isContainer && state.nodeOpen[line] && state.nodeOpen[line][node.pointer];
       var chev = (isContainer && node.size > 0)
         ? '<button class="j-chevron" data-node="' + esc(node.pointer) + '" aria-label="Toggle">' + (open ? "▾" : "▸") + "</button>"
         : '<span class="j-chevron-spacer"></span>';
-      var keyHtml = (node.key !== undefined && node.key !== null)
-        ? '<span class="j-key">' + esc(node.key) + "</span>: " : "";
-      var valInner = isContainer
-        ? typeBadge(node) + ' <span class="j-preview">' + esc(node.preview) + "</span>"
-        : scalarHtml(node);
+      var keyHtml = (node.key !== undefined && node.key !== null) ? '<span class="j-key">' + esc(node.key) + "</span>: " : "";
+      var valInner = isContainer ? containerInner(node) : scalarHtml(node);
       var html = '<div class="j-node j-' + node.type + '"><div class="j-node-head">' +
         chev + keyHtml + '<span class="j-val">' + valInner + "</span></div>";
       if (open) {
@@ -132,56 +128,67 @@
           if (kids.stub && kids.stub.total > kids.stub.shown) {
             html += '<div class="j-more-row">… ' + (kids.stub.total - kids.stub.shown) + " more not shown</div>";
           }
-        } else {
-          html += '<div class="j-fetching">…</div>';
-        }
+        } else { html += '<div class="j-fetching">…</div>'; }
         html += "</div>";
       }
       return html + "</div>";
     }
-
     function inlineTreeHtml(line) {
       var root = state.nodeCache[line + "|"];
-      if (!root) return '<div class="jsonl-inline-tree"><div class="j-fetching">…</div></div>';
-      var kids = childrenOf(line, root);
-      var inner;
+      if (!root) return '<div class="jsonl-tree"><div class="j-fetching">…</div></div>';
+      var kids = childrenOf(line, root), inner;
       if (kids) {
         inner = kids.items.map(function (c) { return nodeHtml(line, c); }).join("");
         if (kids.stub && kids.stub.total > kids.stub.shown) {
           inner += '<div class="j-more-row">… ' + (kids.stub.total - kids.stub.shown) + " more not shown</div>";
         }
-      } else {
-        inner = nodeHtml(line, root);
-      }
-      return '<div class="jsonl-inline-tree">' + inner + "</div>";
+      } else { inner = nodeHtml(line, root); }
+      return '<div class="jsonl-tree">' + inner + "</div>";
     }
 
-    // ---- row preview HTML (wrapper contains preview + optional inline tree)-
+    // Per-row inline header (Tree/Pretty/Raw + Copy) and body.
+    function inlineDetailHtml(line) {
+      var tab = state.rowTab[line] || "tree";
+      function tb(id, label) {
+        return '<button type="button" data-rowtab="' + id + '" aria-pressed="' + (tab === id) + '">' + label + "</button>";
+      }
+      var header = '<div class="jsonl-inline-head">' +
+        '<div class="jsonl-seg jsonl-inline-tabs">' + tb("tree", "Tree") + tb("pretty", "Pretty") + tb("raw", "Raw") + "</div>" +
+        '<button type="button" class="jsonl-inline-copy" data-rowcopy>Copy</button></div>';
+      var body;
+      if (tab === "tree") {
+        body = inlineTreeHtml(line);
+      } else {
+        var txt = (state.rowText[line] || {})[tab];
+        body = txt === undefined ? '<div class="j-fetching">…</div>'
+          : '<pre class="jsonl-rawpre">' + esc(txt) + "</pre>";
+      }
+      return '<div class="jsonl-inline">' + header + body + "</div>";
+    }
+
+    // ---- row wrapper HTML -------------------------------------------------
     function rowHtml(line) {
       var r = state.rows[line];
-      var selCls = line === state.selected ? " is-selected" : "";
+      var selCls = (state.detailMode === "panel" && line === state.selected) ? " is-selected" : "";
       if (!r) {
         return '<div class="jsonl-rowwrap' + selCls + '" data-line="' + line + '">' +
           '<div class="jsonl-row is-stub"><span class="jsonl-row-chev"></span>' +
           '<span class="jsonl-row-num">' + line + '</span>' +
           '<span class="jsonl-row-preview j-loading-row">…</span></div></div>';
       }
-      var isOpen = !!state.rowOpen[line];
-      var chev = r.expandable
-        ? '<button class="jsonl-row-chev" data-rowchev aria-label="Expand">' + (isOpen ? "▾" : "▸") + "</button>"
-        : '<span class="jsonl-row-chev"></span>';
+      var inline = state.detailMode === "inline";
+      var isOpen = inline && !!state.rowOpen[line];
+      var chev;
+      if (inline && r.expandable) chev = '<button class="jsonl-row-chev" data-rowchev aria-label="Expand">' + (isOpen ? "▾" : "▸") + "</button>";
+      else chev = '<span class="jsonl-row-chev"></span>';
       var body;
-      if (r.type === "error") {
-        body = '<span class="j-badge j-badge-err">!</span><span class="jsonl-row-preview">' + esc(r.preview) + "</span>";
-      } else if (r.summary && r.summary.length) {
-        body = '<span class="jsonl-row-preview jsonl-row-summary">' + summaryHtml(r.summary) + "</span>";
-      } else {
-        body = '<span class="jsonl-row-preview">' + esc(r.preview || "") + "</span>";
-      }
+      if (r.type === "error") body = '<span class="j-badge j-badge-err">!</span><span class="jsonl-row-preview">' + esc(r.preview) + "</span>";
+      else if (r.summary && r.summary.length) body = '<span class="jsonl-row-preview jsonl-row-summary">' + summaryHtml(r.summary) + "</span>";
+      else body = '<span class="jsonl-row-preview">' + esc(r.preview || "") + "</span>";
       var rowLine = '<div class="jsonl-row' + (isOpen ? " is-open" : "") + '">' + chev +
         '<span class="jsonl-row-num">' + line + "</span>" + body + "</div>";
-      var tree = isOpen ? inlineTreeHtml(line) : "";
-      return '<div class="jsonl-rowwrap' + selCls + '" data-line="' + line + '">' + rowLine + tree + "</div>";
+      return '<div class="jsonl-rowwrap' + selCls + '" data-line="' + line + '">' +
+        rowLine + (isOpen ? inlineDetailHtml(line) : "") + "</div>";
     }
 
     // ---- lazy fetch helpers ----------------------------------------------
@@ -193,32 +200,40 @@
         cb();
       });
     }
-
+    function ensureRowText(line, fmt, cb) {
+      state.rowText[line] = state.rowText[line] || {};
+      if (state.rowText[line][fmt] !== undefined) { cb(); return; }
+      api("/api/jsonl/row", { path: src, line: line, format: fmt }).then(function (res) {
+        state.rowText[line][fmt] = res.ok ? res.j.text : "(failed to load)";
+        cb();
+      });
+    }
+    function ensureRowData(line, cb) {
+      var tab = state.rowTab[line] || "tree";
+      if (tab === "tree") ensureNode(line, "", cb); else ensureRowText(line, tab, cb);
+    }
     function toggleRow(line) {
       if (state.rowOpen[line]) { delete state.rowOpen[line]; refreshList(); return; }
       state.rowOpen[line] = true;
-      ensureNode(line, "", refreshList);
+      ensureRowData(line, refreshList);
     }
-
     function toggleNode(line, pointer) {
       state.nodeOpen[line] = state.nodeOpen[line] || {};
       if (state.nodeOpen[line][pointer]) { delete state.nodeOpen[line][pointer]; refreshList(); return; }
       state.nodeOpen[line][pointer] = true;
-      // find the node descriptor to see if children are already available
       ensureNode(line, pointer, refreshList);
     }
 
-    // ---- master-detail pane ----------------------------------------------
+    // ---- detail pane (panel mode) ----------------------------------------
     function applySelection(scope) {
       (scope || main).querySelectorAll("[data-line]").forEach(function (el) {
         if (el.classList.contains("jsonl-rowwrap") || el.tagName === "TR") {
-          el.classList.toggle("is-selected", parseInt(el.getAttribute("data-line"), 10) === state.selected);
+          el.classList.toggle("is-selected", state.detailMode === "panel" && parseInt(el.getAttribute("data-line"), 10) === state.selected);
         }
       });
     }
     function selectRow(line) {
-      state.selected = line;
-      applySelection();
+      state.selected = line; applySelection();
       detail.hidden = false;
       if (detailTitle) detailTitle.textContent = "Row " + line;
       renderDetail();
@@ -240,10 +255,10 @@
           if (state.selected !== line) return;
           detailBody.innerHTML = "";
           if (!res.ok) { detailBody.innerHTML = '<div class="jsonl-error">failed to load</div>'; return; }
-          var box = document.createElement("div");
-          box.className = "jsonl-tree jsonl-detail-tree";
-          box.setAttribute("data-detail-line", line);
-          renderDetailTree(box, line, res.j);
+          var box = document.createElement("div"); box.className = "jsonl-tree";
+          var kids = res.j.children || (res.j.child_stubs ? res.j.child_stubs.items : null);
+          if (kids) kids.forEach(function (c) { box.appendChild(detailNodeEl(line, c)); });
+          else box.appendChild(detailNodeEl(line, res.j));
           detailBody.appendChild(box);
         });
       } else {
@@ -251,31 +266,18 @@
           if (state.selected !== line) return;
           detailBody.innerHTML = "";
           if (!res.ok) { detailBody.innerHTML = '<div class="jsonl-error">failed to load</div>'; return; }
-          var pre = document.createElement("pre");
-          pre.className = "jsonl-rawpre";
-          pre.textContent = res.j.text;
-          detailBody.appendChild(pre);
+          var pre = document.createElement("pre"); pre.className = "jsonl-rawpre";
+          pre.textContent = res.j.text; detailBody.appendChild(pre);
         });
       }
     }
-    // The detail-pane tree uses its own live DOM (not virtualized), so it can
-    // keep simple per-element handlers and its own expansion state.
-    function renderDetailTree(box, line, root) {
-      box.innerHTML = "";
-      var kids = root.children || (root.child_stubs ? root.child_stubs.items : null);
-      if (kids) kids.forEach(function (c) { box.appendChild(detailNodeEl(line, c)); });
-      else box.appendChild(detailNodeEl(line, root));
-    }
     function detailNodeEl(line, node) {
-      var wrap = document.createElement("div");
-      wrap.className = "j-node j-" + node.type;
-      var head = document.createElement("div");
-      head.className = "j-node-head";
+      var wrap = document.createElement("div"); wrap.className = "j-node j-" + node.type;
+      var head = document.createElement("div"); head.className = "j-node-head";
       var isContainer = node.type === "object" || node.type === "array";
       var chevBtn = null;
       if (isContainer && node.size > 0) {
-        chevBtn = document.createElement("button");
-        chevBtn.className = "j-chevron"; chevBtn.innerHTML = "▸";
+        chevBtn = document.createElement("button"); chevBtn.className = "j-chevron"; chevBtn.innerHTML = "▸";
         head.appendChild(chevBtn);
       } else { var sp = document.createElement("span"); sp.className = "j-chevron-spacer"; head.appendChild(sp); }
       if (node.key !== undefined && node.key !== null) {
@@ -283,7 +285,7 @@
         head.appendChild(k); head.appendChild(document.createTextNode(": "));
       }
       var val = document.createElement("span"); val.className = "j-val";
-      val.innerHTML = isContainer ? typeBadge(node) + ' <span class="j-preview">' + esc(node.preview) + "</span>" : scalarHtml(node);
+      val.innerHTML = isContainer ? containerInner(node) : scalarHtml(node);
       head.appendChild(val); wrap.appendChild(head);
       var childBox = document.createElement("div"); childBox.className = "j-children"; childBox.hidden = true;
       wrap.appendChild(childBox);
@@ -329,7 +331,7 @@
     });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDetail(); });
 
-    // ---- list view (virtualized) -----------------------------------------
+    // ---- list view --------------------------------------------------------
     var clusterize = null;
     function rowLineNumbers() {
       if (state.searchMatches) return state.searchMatches;
@@ -339,7 +341,6 @@
     }
     function buildRowsHtml() { return rowLineNumbers().map(rowHtml); }
     function refreshList() { if (clusterize) clusterize.update(buildRowsHtml()); }
-
     function ensureRows(lines, cb) {
       var missing = lines.filter(function (l) { return !state.rows[l]; });
       if (!missing.length) { cb && cb(); return; }
@@ -349,16 +350,12 @@
         cb && cb();
       });
     }
-
     function renderList() {
       main.innerHTML = "";
-      var scroll = document.createElement("div");
-      scroll.className = "jsonl-scroll clusterize-scroll";
-      var content = document.createElement("div");
-      content.className = "jsonl-rows clusterize-content";
+      var scroll = document.createElement("div"); scroll.className = "jsonl-scroll clusterize-scroll";
+      var content = document.createElement("div"); content.className = "jsonl-rows clusterize-content";
       content.innerHTML = '<div class="clusterize-no-data">Loading…</div>';
-      scroll.appendChild(content);
-      main.appendChild(scroll);
+      scroll.appendChild(content); main.appendChild(scroll);
 
       clusterize = new Clusterize({
         rows: buildRowsHtml(), scrollElem: scroll, contentElem: content, rows_in_block: 20,
@@ -376,15 +373,29 @@
       });
 
       content.addEventListener("click", function (e) {
-        var nodeChev = e.target.closest(".j-chevron[data-node]");
         var wrap = e.target.closest(".jsonl-rowwrap");
         if (!wrap) return;
         var line = parseInt(wrap.getAttribute("data-line"), 10);
+        var nodeChev = e.target.closest(".j-chevron[data-node]");
         if (nodeChev) { e.stopPropagation(); toggleNode(line, nodeChev.getAttribute("data-node")); return; }
+        var rowTabBtn = e.target.closest("[data-rowtab]");
+        if (rowTabBtn) { e.stopPropagation(); setRowTab(line, rowTabBtn.getAttribute("data-rowtab")); return; }
+        if (e.target.closest("[data-rowcopy]")) {
+          e.stopPropagation();
+          var fmt = (state.rowTab[line] || "tree") === "pretty" ? "pretty" : "raw";
+          ensureRowText(line, fmt, function () { copyText((state.rowText[line] || {})[fmt], e.target.closest("[data-rowcopy]")); });
+          return;
+        }
         if (e.target.closest(".jsonl-row-chev[data-rowchev]")) { toggleRow(line); return; }
         if (wrap.querySelector(".jsonl-row.is-stub")) return;
-        selectRow(line);
+        // row-body click
+        if (state.detailMode === "inline") toggleRow(line);
+        else selectRow(line);
       });
+    }
+    function setRowTab(line, tab) {
+      state.rowTab[line] = tab;
+      ensureRowData(line, refreshList);
     }
 
     // ---- table view (paged) ----------------------------------------------
@@ -406,10 +417,8 @@
       if (state.tablePage >= pages) state.tablePage = pages - 1;
       var startI = state.tablePage * TABLE_PAGE;
       var pageLines = lines.slice(startI, startI + TABLE_PAGE);
-      var wrap = document.createElement("div");
-      wrap.className = "jsonl-table-wrap";
-      var table = document.createElement("table");
-      table.className = "jsonl-table";
+      var wrap = document.createElement("div"); wrap.className = "jsonl-table-wrap";
+      var table = document.createElement("table"); table.className = "jsonl-table";
       table.innerHTML = "<thead><tr><th class=\"j-col-num\">#</th>" +
         cols.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("") + "</tr></thead><tbody></tbody>";
       wrap.appendChild(table);
@@ -430,8 +439,7 @@
         if (tr) selectRow(parseInt(tr.getAttribute("data-line"), 10));
       });
       if (pages > 1) {
-        var pager = document.createElement("div");
-        pager.className = "jsonl-pager";
+        var pager = document.createElement("div"); pager.className = "jsonl-pager";
         pager.innerHTML =
           '<button type="button" data-page="prev"' + (state.tablePage === 0 ? " disabled" : "") + ">‹ Prev</button>" +
           '<span class="jsonl-pager-info">Rows ' + (startI + 1).toLocaleString() + "–" +
@@ -439,17 +447,19 @@
           "  (page " + (state.tablePage + 1) + " / " + pages + ")</span>" +
           '<button type="button" data-page="next"' + (state.tablePage >= pages - 1 ? " disabled" : "") + ">Next ›</button>";
         pager.addEventListener("click", function (e) {
-          var b = e.target.closest("[data-page]");
-          if (!b || b.disabled) return;
-          state.tablePage += b.getAttribute("data-page") === "next" ? 1 : -1;
-          renderTable();
+          var b = e.target.closest("[data-page]"); if (!b || b.disabled) return;
+          state.tablePage += b.getAttribute("data-page") === "next" ? 1 : -1; renderTable();
         });
         wrap.appendChild(pager);
       }
       main.appendChild(wrap);
     }
 
-    function renderMode() { if (state.mode === "table") renderTable(); else renderList(); }
+    function renderMode() {
+      // The detail-mode toggle only applies to list view; table always uses the panel.
+      if (detailModeToggle) detailModeToggle.hidden = state.mode !== "list";
+      if (state.mode === "table") renderTable(); else renderList();
+    }
 
     // ---- search -----------------------------------------------------------
     var searchTimer = null;
@@ -472,7 +482,6 @@
       searchTimer = setTimeout(function () { runSearch(q); }, 250);
     });
     if (searchClear) searchClear.addEventListener("click", function () { searchInput.value = ""; runSearch(""); });
-
     function updateCount() {
       if (!countEl) return;
       countEl.textContent = state.searchMatches
@@ -486,6 +495,15 @@
       viewToggle.querySelectorAll("[data-view]").forEach(function (btn) {
         btn.setAttribute("aria-pressed", btn === b ? "true" : "false");
       });
+      renderMode();
+    });
+    if (detailModeToggle) detailModeToggle.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-detailmode]"); if (!b) return;
+      state.detailMode = b.getAttribute("data-detailmode");
+      detailModeToggle.querySelectorAll("[data-detailmode]").forEach(function (btn) {
+        btn.setAttribute("aria-pressed", btn === b ? "true" : "false");
+      });
+      if (state.detailMode === "inline") closeDetail();  // panel and inline are exclusive
       renderMode();
     });
 

@@ -23,7 +23,11 @@ def render(path: Path, *, src_path: str = "") -> str:
     </div>
     <span class="jsonl-count" data-jsonl-count></span>
     <span class="jsonl-spacer"></span>
-    <div class="jsonl-view-toggle" role="group" aria-label="View mode" hidden data-jsonl-viewtoggle>
+    <div class="jsonl-seg" role="group" aria-label="Detail mode" data-jsonl-detailmode>
+      <button type="button" data-detailmode="inline" aria-pressed="true" title="Expand rows in place">Inline</button>
+      <button type="button" data-detailmode="panel" aria-pressed="false" title="Open rows in a side panel">Panel</button>
+    </div>
+    <div class="jsonl-seg" role="group" aria-label="View mode" hidden data-jsonl-viewtoggle>
       <button type="button" data-view="list" aria-pressed="true" title="List view">List</button>
       <button type="button" data-view="table" aria-pressed="false" title="Table view">Table</button>
     </div>

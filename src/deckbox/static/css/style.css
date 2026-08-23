@@ -529,13 +529,13 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .jsonl-count { font-size: 12.5px; color: var(--text-faint); font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
 .jsonl-spacer { flex: 1; }
 
-.jsonl-view-toggle { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
-.jsonl-view-toggle button {
+.jsonl-seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.jsonl-seg button {
   height: 30px; padding: 0 12px; border: none; background: var(--surface); color: var(--text-muted);
   font-family: var(--font-sans); font-size: 13px; font-weight: 600; cursor: pointer;
 }
-.jsonl-view-toggle button + button { border-left: 1px solid var(--border); }
-.jsonl-view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); }
+.jsonl-seg button + button { border-left: 1px solid var(--border); }
+.jsonl-seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); }
 
 .jsonl-loading, .jsonl-error { padding: 24px; color: var(--text-faint); font-family: var(--font-sans); }
 .jsonl-error { color: #e5484d; }
@@ -610,11 +610,23 @@ code { font-family: var(--font-mono); font-size: .9em; }
 }
 button.jsonl-row-chev:hover { color: var(--text); }
 
-/* Inline tree under an expanded row */
-.jsonl-inline-tree {
+/* Inline expansion under a row: per-row header (tabs + copy) + body */
+.jsonl-inline {
   padding: 8px 14px 12px 38px; background: var(--code-bg);
-  font-size: 12.5px; line-height: 1.6; white-space: normal; overflow-x: auto;
+  white-space: normal; overflow-x: auto; border-top: 1px solid var(--border);
 }
+.jsonl-inline-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-family: var(--font-sans);
+}
+.jsonl-inline-tabs button { height: 26px; padding: 0 10px; font-size: 12px; }
+.jsonl-inline-copy {
+  height: 26px; padding: 0 11px; border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-family: var(--font-sans); font-size: 12px;
+  font-weight: 600; cursor: pointer;
+}
+.jsonl-inline-copy:hover { background: var(--surface-3); }
+.jsonl-inline .jsonl-tree { font-size: 12.5px; line-height: 1.6; }
+.jsonl-inline .jsonl-rawpre { margin: 0; }
 .jsonl-row-num {
   min-width: 46px; color: var(--text-faint); text-align: right; flex-shrink: 0;
   font-variant-numeric: tabular-nums; user-select: none;
