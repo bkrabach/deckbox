@@ -537,12 +537,51 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .jsonl-view-toggle button + button { border-left: 1px solid var(--border); }
 .jsonl-view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); }
 
-.jsonl-body { position: relative; }
 .jsonl-loading, .jsonl-error { padding: 24px; color: var(--text-faint); font-family: var(--font-sans); }
 .jsonl-error { color: #e5484d; }
 .jsonl-status {
   padding: 6px 14px; font-size: 12px; color: var(--text-faint);
   border-top: 1px solid var(--border); background: var(--surface-2); font-family: var(--font-sans);
+}
+
+/* Master-detail layout: list/table on the left, persistent detail pane right. */
+.jsonl-layout { display: flex; align-items: stretch; }
+.jsonl-main { flex: 1; min-width: 0; }
+
+.jsonl-detail {
+  width: 420px; flex-shrink: 0; display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--surface);
+  max-height: min(72vh, 760px);
+}
+.jsonl-detail[hidden] { display: none; }
+.jsonl-detail-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--surface-2);
+  font-family: var(--font-sans);
+}
+.jsonl-detail-title { font-weight: 680; font-size: 13.5px; }
+.jsonl-detail-tabs { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.jsonl-detail-tabs button {
+  height: 28px; padding: 0 11px; border: none; background: var(--surface); color: var(--text-muted);
+  font-family: var(--font-sans); font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.jsonl-detail-tabs button + button { border-left: 1px solid var(--border); }
+.jsonl-detail-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); }
+.jsonl-detail-copy {
+  height: 28px; padding: 0 11px; border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-family: var(--font-sans); font-size: 12.5px;
+  font-weight: 600; cursor: pointer; margin-left: auto;
+}
+.jsonl-detail-copy:hover { background: var(--surface-3); }
+.jsonl-detail-close {
+  width: 28px; height: 28px; border: none; border-radius: 7px; background: transparent;
+  color: var(--text-muted); font-size: 20px; line-height: 1; cursor: pointer;
+}
+.jsonl-detail-close:hover { background: var(--surface-3); color: var(--text); }
+.jsonl-detail-body { overflow: auto; padding: 12px 14px; }
+@media (max-width: 900px) {
+  .jsonl-layout { flex-direction: column; }
+  .jsonl-detail { width: auto; border-left: none; border-top: 1px solid var(--border); max-height: 360px; }
 }
 
 /* Clusterize scroll area */
@@ -555,13 +594,13 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .jsonl-row {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 14px; border-bottom: 1px solid var(--border);
-  font-size: 12.5px; cursor: default; white-space: nowrap;
+  font-size: 12.5px; cursor: pointer; white-space: nowrap;
 }
-.jsonl-row[data-line]:not(.is-stub) { cursor: pointer; }
+.jsonl-row.is-stub { cursor: default; }
 .jsonl-row:hover { background: var(--surface-2); }
-.jsonl-row.is-open { background: var(--surface-2); }
-.jsonl-row-chev { width: 12px; color: var(--text-faint); flex-shrink: 0; }
-.jsonl-row-chev.spacer { visibility: hidden; }
+.jsonl-row.is-selected { background: var(--accent-soft); }
+.jsonl-row.is-selected .jsonl-row-num { color: var(--accent-strong); }
+.jsonl-row-chev { width: 10px; color: var(--text-faint); flex-shrink: 0; }
 .jsonl-row-num {
   min-width: 46px; color: var(--text-faint); text-align: right; flex-shrink: 0;
   font-variant-numeric: tabular-nums; user-select: none;
@@ -569,28 +608,27 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .jsonl-row-preview { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
 .jsonl-row.is-stub .jsonl-row-preview { color: var(--text-faint); }
 
+/* Rich inline summary preview: key: value · key: value */
+.jsonl-row-summary { display: inline; }
+.j-pair { }
+.j-sk { color: var(--text-faint); }
+.j-sk::after { content: ": "; color: var(--text-faint); }
+.j-sep { color: var(--border-strong); margin: 0 8px; }
+
 .j-badge {
   display: inline-block; padding: 1px 7px; border-radius: 999px; flex-shrink: 0;
   background: var(--surface-3); color: var(--text-muted); font-size: 11px; font-weight: 600;
 }
-.j-badge-err { background: #e5484d; color: #fff; }
+.j-badge-err { background: #e5484d; color: #fff; margin-right: 6px; }
 
-/* Row detail + tree */
-.jsonl-row-detail { padding: 10px 14px 14px 34px; border-bottom: 1px solid var(--border); background: var(--code-bg); }
-.jsonl-row-actions { display: flex; gap: 6px; margin-bottom: 8px; font-family: var(--font-sans); }
-.jsonl-row-actions button {
-  height: 26px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 7px;
-  background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer;
-}
-.jsonl-row-actions button:hover { background: var(--surface-2); }
+/* Raw/pretty text in the detail pane */
 .jsonl-rawpre {
-  margin: 10px 0 0; padding: 12px; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 8px; max-height: 340px; overflow: auto; font-size: 12px; line-height: 1.55;
+  margin: 0; padding: 12px; background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; overflow: auto; font-size: 12px; line-height: 1.55;
   white-space: pre-wrap; word-break: break-word; color: var(--text);
 }
 
 .jsonl-tree { font-size: 12.5px; line-height: 1.6; }
-.j-node { }
 .j-node-head { display: flex; align-items: flex-start; gap: 2px; }
 .j-chevron {
   width: 16px; height: 20px; border: none; background: transparent; color: var(--text-faint);

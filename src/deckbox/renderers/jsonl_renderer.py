@@ -28,8 +28,23 @@ def render(path: Path, *, src_path: str = "") -> str:
       <button type="button" data-view="table" aria-pressed="false" title="Table view">Table</button>
     </div>
   </div>
-  <div class="jsonl-body" data-jsonl-body>
-    <div class="jsonl-loading">Loading…</div>
+  <div class="jsonl-layout" data-jsonl-layout>
+    <div class="jsonl-main" data-jsonl-main>
+      <div class="jsonl-loading">Loading…</div>
+    </div>
+    <aside class="jsonl-detail" data-jsonl-detail hidden aria-label="Row detail">
+      <div class="jsonl-detail-head">
+        <span class="jsonl-detail-title" data-jsonl-detail-title>Row</span>
+        <div class="jsonl-detail-tabs" role="group" aria-label="Row view" data-jsonl-tabs>
+          <button type="button" data-tab="tree" aria-pressed="true">Tree</button>
+          <button type="button" data-tab="pretty" aria-pressed="false">Pretty</button>
+          <button type="button" data-tab="raw" aria-pressed="false">Raw</button>
+        </div>
+        <button type="button" class="jsonl-detail-copy" data-jsonl-copy title="Copy this row">Copy</button>
+        <button type="button" class="jsonl-detail-close" data-jsonl-close aria-label="Close detail">×</button>
+      </div>
+      <div class="jsonl-detail-body" data-jsonl-detail-body></div>
+    </aside>
   </div>
   <div class="jsonl-status" data-jsonl-status hidden></div>
 </div>

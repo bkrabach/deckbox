@@ -34,8 +34,8 @@ class Thresholds:
     inline_depth: int = 2  # how many levels to inline in one response
     node_bytes: int = 16_384  # don't inline a subtree larger (est.) than this
     string_preview: int = 300  # truncate string previews to this many chars
-    row_preview_fields: int = 12  # top-level scalar fields carried per row preview
-    row_field_chars: int = 120  # truncate each row-preview field value
+    row_preview_fields: int = 24  # top-level fields carried in a row summary
+    row_field_chars: int = 120  # truncate each row-summary field value
     max_columns: int = 24  # suggested table columns
     column_sample: int = 200  # rows sampled to detect homogeneous columns
     search_scan_cap: int = 500_000  # max rows scanned per search
@@ -231,20 +231,40 @@ def describe_node(
     return node
 
 
-def row_preview_fields(value: Any, th: Thresholds) -> dict[str, Any] | None:
-    """Top-level scalar fields for an object row (powers list + table view)."""
-    if not isinstance(value, dict):
-        return None
-    fields: dict[str, Any] = {}
-    for k, v in list(value.items())[: th.row_preview_fields]:
-        t = _type_of(v)
-        if t in ("object", "array"):
-            fields[str(k)] = _container_preview(v, th)
-        elif t == "string":
-            fields[str(k)] = v[: th.row_field_chars] + ("…" if len(v) > th.row_field_chars else "")
-        else:
-            fields[str(k)] = v
-    return fields
+def _summary_item(key: Any, v: Any, th: Thresholds) -> dict:
+    """One entry in a row summary: key + type + display value.
+
+    Carries the type so the client can render/colour it and, crucially, show
+    the distinguishing *content* (e.g. an event name) inline rather than only
+    the shape. Nested containers collapse to their shape (`{n}` / `[n]`).
+    """
+    t = _type_of(v)
+    item: dict[str, Any] = {"k": key, "t": t}
+    if t in ("object", "array"):
+        item["v"] = _container_preview(v, th)
+        item["size"] = len(v)
+    elif t == "string":
+        item["v"] = v[: th.row_field_chars]
+        item["trunc"] = len(v) > th.row_field_chars
+    else:
+        item["v"] = v
+    return item
+
+
+def row_summary(value: Any, th: Thresholds) -> list[dict]:
+    """Ordered top-level entries for an object/array row (list + table view)."""
+    items: list[dict] = []
+    if isinstance(value, dict):
+        for i, (k, v) in enumerate(value.items()):
+            if i >= th.row_preview_fields:
+                break
+            items.append(_summary_item(str(k), v, th))
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            if i >= th.row_preview_fields:
+                break
+            items.append(_summary_item(i, v, th))
+    return items
 
 
 def make_row_preview(
@@ -258,9 +278,7 @@ def make_row_preview(
         prev["preview"] = _container_preview(value, th)
         prev["count"] = len(value)
         prev["expandable"] = len(value) > 0
-        fields = row_preview_fields(value, th)
-        if fields is not None:
-            prev["fields"] = fields
+        prev["summary"] = row_summary(value, th)
     else:
         scalar = _scalar_node(value, "", None, th)
         prev["preview"] = _short_scalar(scalar)
