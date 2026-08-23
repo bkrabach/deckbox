@@ -2,8 +2,15 @@
  *
  * The server holds the file; this only ever pulls small previews and
  * lazily-fetched slices via /api/jsonl*. Rows are virtualized (Clusterize) and
- * carry a rich inline preview (key: value). Clicking a row opens a persistent
- * master-detail pane (Tree / Pretty / Raw + Copy) that survives list scrolling.
+ * carry a rich inline preview (key: value).
+ *
+ * Two ways to open a row, both persistent:
+ *  - the row's ▸ chevron toggles an INLINE tree, in place — multiple rows can be
+ *    open at once and they survive list scrolling because expansion state lives
+ *    in a model and every row is re-rendered from it (model-driven), never as
+ *    orphaned DOM the virtualizer can drop.
+ *  - clicking the row body opens the same row in a docked detail pane with
+ *    Tree / Pretty / Raw + Copy for a focused deep-dive.
  */
 (function () {
   "use strict";
@@ -37,6 +44,9 @@
       search: "",
       searchMatches: null, // array of line numbers when searching
       tablePage: 0,
+      rowOpen: {},         // line -> bool (inline row expansion)
+      nodeOpen: {},        // line -> { pointer: true } open tree nodes
+      nodeCache: {},       // "line|pointer" -> node descriptor response
     };
 
     function api(path, params) {
@@ -65,7 +75,6 @@
       if (t === "object" || t === "array") return '<span class="j-preview">' + esc(v) + "</span>";
       return esc(String(v));
     }
-
     function scalarHtml(node) {
       if (node.type === "string") {
         return '<span class="j-str">"' + esc(node.value) + (node.truncated ? "…" : "") + '"</span>' +
@@ -73,7 +82,6 @@
       }
       return valHtml(node.type, node.value);
     }
-
     function typeBadge(node) {
       if (node.type === "object") return '<span class="j-badge">{} ' + node.size + "</span>";
       if (node.type === "array") return '<span class="j-badge">[] ' + node.size + "</span>";
@@ -84,20 +92,84 @@
     function summaryHtml(summary) {
       if (!summary || !summary.length) return "";
       return summary.map(function (it) {
-        var v = valHtml(it.t, it.v, it.trunc);
-        return '<span class="j-pair"><span class="j-sk">' + esc(it.k) + "</span>" + v + "</span>";
+        return '<span class="j-pair"><span class="j-sk">' + esc(it.k) + "</span>" +
+          valHtml(it.t, it.v, it.trunc) + "</span>";
       }).join('<span class="j-sep">·</span>');
     }
 
-    function rowPreviewHtml(line) {
+    // ---- model-driven tree rendering (HTML strings) -----------------------
+    // Children of a node come from the node's own inlined children, its stub
+    // list, or a separately-cached fetch for its pointer.
+    function childrenOf(line, node) {
+      if (node.children) return { items: node.children, stub: null };
+      if (node.child_stubs) return { items: node.child_stubs.items, stub: node.child_stubs };
+      var cached = state.nodeCache[line + "|" + node.pointer];
+      if (cached) {
+        if (cached.children) return { items: cached.children, stub: null };
+        if (cached.child_stubs) return { items: cached.child_stubs.items, stub: cached.child_stubs };
+      }
+      return null;
+    }
+
+    function nodeHtml(line, node) {
+      var isContainer = node.type === "object" || node.type === "array";
+      var open = isContainer && state.nodeOpen[line] && state.nodeOpen[line][node.pointer];
+      var chev = (isContainer && node.size > 0)
+        ? '<button class="j-chevron" data-node="' + esc(node.pointer) + '" aria-label="Toggle">' + (open ? "▾" : "▸") + "</button>"
+        : '<span class="j-chevron-spacer"></span>';
+      var keyHtml = (node.key !== undefined && node.key !== null)
+        ? '<span class="j-key">' + esc(node.key) + "</span>: " : "";
+      var valInner = isContainer
+        ? typeBadge(node) + ' <span class="j-preview">' + esc(node.preview) + "</span>"
+        : scalarHtml(node);
+      var html = '<div class="j-node j-' + node.type + '"><div class="j-node-head">' +
+        chev + keyHtml + '<span class="j-val">' + valInner + "</span></div>";
+      if (open) {
+        var kids = childrenOf(line, node);
+        html += '<div class="j-children">';
+        if (kids) {
+          html += kids.items.map(function (c) { return nodeHtml(line, c); }).join("");
+          if (kids.stub && kids.stub.total > kids.stub.shown) {
+            html += '<div class="j-more-row">… ' + (kids.stub.total - kids.stub.shown) + " more not shown</div>";
+          }
+        } else {
+          html += '<div class="j-fetching">…</div>';
+        }
+        html += "</div>";
+      }
+      return html + "</div>";
+    }
+
+    function inlineTreeHtml(line) {
+      var root = state.nodeCache[line + "|"];
+      if (!root) return '<div class="jsonl-inline-tree"><div class="j-fetching">…</div></div>';
+      var kids = childrenOf(line, root);
+      var inner;
+      if (kids) {
+        inner = kids.items.map(function (c) { return nodeHtml(line, c); }).join("");
+        if (kids.stub && kids.stub.total > kids.stub.shown) {
+          inner += '<div class="j-more-row">… ' + (kids.stub.total - kids.stub.shown) + " more not shown</div>";
+        }
+      } else {
+        inner = nodeHtml(line, root);
+      }
+      return '<div class="jsonl-inline-tree">' + inner + "</div>";
+    }
+
+    // ---- row preview HTML (wrapper contains preview + optional inline tree)-
+    function rowHtml(line) {
       var r = state.rows[line];
       var selCls = line === state.selected ? " is-selected" : "";
       if (!r) {
-        return '<div class="jsonl-row is-stub' + selCls + '" data-line="' + line + '">' +
+        return '<div class="jsonl-rowwrap' + selCls + '" data-line="' + line + '">' +
+          '<div class="jsonl-row is-stub"><span class="jsonl-row-chev"></span>' +
           '<span class="jsonl-row-num">' + line + '</span>' +
-          '<span class="jsonl-row-preview j-loading-row">…</span></div>';
+          '<span class="jsonl-row-preview j-loading-row">…</span></div></div>';
       }
-      var chev = r.expandable ? "▸" : "";
+      var isOpen = !!state.rowOpen[line];
+      var chev = r.expandable
+        ? '<button class="jsonl-row-chev" data-rowchev aria-label="Expand">' + (isOpen ? "▾" : "▸") + "</button>"
+        : '<span class="jsonl-row-chev"></span>';
       var body;
       if (r.type === "error") {
         body = '<span class="j-badge j-badge-err">!</span><span class="jsonl-row-preview">' + esc(r.preview) + "</span>";
@@ -106,94 +178,44 @@
       } else {
         body = '<span class="jsonl-row-preview">' + esc(r.preview || "") + "</span>";
       }
-      return '<div class="jsonl-row' + selCls + '" data-line="' + line + '">' +
-        '<span class="jsonl-row-chev">' + chev + "</span>" +
-        '<span class="jsonl-row-num">' + line + "</span>" +
-        body + "</div>";
+      var rowLine = '<div class="jsonl-row' + (isOpen ? " is-open" : "") + '">' + chev +
+        '<span class="jsonl-row-num">' + line + "</span>" + body + "</div>";
+      var tree = isOpen ? inlineTreeHtml(line) : "";
+      return '<div class="jsonl-rowwrap' + selCls + '" data-line="' + line + '">' + rowLine + tree + "</div>";
     }
 
-    // ---- lazy tree node (used inside the detail pane) ---------------------
-    function nodeEl(line, node) {
-      var wrap = document.createElement("div");
-      wrap.className = "j-node j-" + node.type;
-      var head = document.createElement("div");
-      head.className = "j-node-head";
-      var isContainer = node.type === "object" || node.type === "array";
+    // ---- lazy fetch helpers ----------------------------------------------
+    function ensureNode(line, pointer, cb) {
+      var key = line + "|" + pointer;
+      if (state.nodeCache[key]) { cb(); return; }
+      api("/api/jsonl/node", { path: src, line: line, pointer: pointer }).then(function (res) {
+        if (res.ok) state.nodeCache[key] = res.j;
+        cb();
+      });
+    }
 
-      if (isContainer && node.size > 0) {
-        var chev = document.createElement("button");
-        chev.className = "j-chevron";
-        chev.setAttribute("aria-label", "Toggle");
-        chev.innerHTML = "▸";
-        head.appendChild(chev);
-      } else {
-        var sp = document.createElement("span");
-        sp.className = "j-chevron-spacer";
-        head.appendChild(sp);
-      }
-      if (node.key !== undefined && node.key !== null) {
-        var keyEl = document.createElement("span");
-        keyEl.className = "j-key";
-        keyEl.textContent = node.key;
-        head.appendChild(keyEl);
-        head.appendChild(document.createTextNode(": "));
-      }
-      var val = document.createElement("span");
-      val.className = "j-val";
-      val.innerHTML = isContainer
-        ? typeBadge(node) + ' <span class="j-preview">' + esc(node.preview) + "</span>"
-        : scalarHtml(node);
-      head.appendChild(val);
-      wrap.appendChild(head);
+    function toggleRow(line) {
+      if (state.rowOpen[line]) { delete state.rowOpen[line]; refreshList(); return; }
+      state.rowOpen[line] = true;
+      ensureNode(line, "", refreshList);
+    }
 
-      var childBox = document.createElement("div");
-      childBox.className = "j-children";
-      childBox.hidden = true;
-      wrap.appendChild(childBox);
-
-      var built = false;
-      function renderChildren(children, stub) {
-        childBox.innerHTML = "";
-        children.forEach(function (c) { childBox.appendChild(nodeEl(line, c)); });
-        if (stub && stub.total > stub.shown) {
-          var more = document.createElement("div");
-          more.className = "j-more-row";
-          more.textContent = "… " + (stub.total - stub.shown) + " more not shown";
-          childBox.appendChild(more);
-        }
-        built = true;
-      }
-      if (isContainer && node.children) { renderChildren(node.children); built = true; }
-      else if (isContainer && node.child_stubs) { renderChildren(node.child_stubs.items, node.child_stubs); built = true; }
-
-      if (isContainer && node.size > 0) {
-        var chevBtn = head.querySelector(".j-chevron");
-        var open = false;
-        chevBtn.addEventListener("click", function () {
-          open = !open;
-          chevBtn.innerHTML = open ? "▾" : "▸";
-          childBox.hidden = !open;
-          if (open && !built) {
-            childBox.innerHTML = '<div class="j-fetching">…</div>';
-            api("/api/jsonl/node", { path: src, line: line, pointer: node.pointer }).then(function (res) {
-              if (res.ok && res.j.children) renderChildren(res.j.children);
-              else if (res.ok && res.j.child_stubs) renderChildren(res.j.child_stubs.items, res.j.child_stubs);
-              else if (res.ok) childBox.innerHTML = '<div class="j-fetching">(empty)</div>';
-              else childBox.innerHTML = '<div class="j-fetching">failed to load</div>';
-            });
-          }
-        });
-      }
-      return wrap;
+    function toggleNode(line, pointer) {
+      state.nodeOpen[line] = state.nodeOpen[line] || {};
+      if (state.nodeOpen[line][pointer]) { delete state.nodeOpen[line][pointer]; refreshList(); return; }
+      state.nodeOpen[line][pointer] = true;
+      // find the node descriptor to see if children are already available
+      ensureNode(line, pointer, refreshList);
     }
 
     // ---- master-detail pane ----------------------------------------------
     function applySelection(scope) {
       (scope || main).querySelectorAll("[data-line]").forEach(function (el) {
-        el.classList.toggle("is-selected", parseInt(el.getAttribute("data-line"), 10) === state.selected);
+        if (el.classList.contains("jsonl-rowwrap") || el.tagName === "TR") {
+          el.classList.toggle("is-selected", parseInt(el.getAttribute("data-line"), 10) === state.selected);
+        }
       });
     }
-
     function selectRow(line) {
       state.selected = line;
       applySelection();
@@ -201,44 +223,28 @@
       if (detailTitle) detailTitle.textContent = "Row " + line;
       renderDetail();
     }
-
-    function closeDetail() {
-      state.selected = null;
-      detail.hidden = true;
-      applySelection();
-    }
-
+    function closeDetail() { state.selected = null; detail.hidden = true; applySelection(); }
     function setTab(tab) {
       state.detailTab = tab;
-      if (detailTabs) {
-        detailTabs.querySelectorAll("[data-tab]").forEach(function (b) {
-          b.setAttribute("aria-pressed", b.getAttribute("data-tab") === tab ? "true" : "false");
-        });
-      }
+      if (detailTabs) detailTabs.querySelectorAll("[data-tab]").forEach(function (b) {
+        b.setAttribute("aria-pressed", b.getAttribute("data-tab") === tab ? "true" : "false");
+      });
       renderDetail();
     }
-
     function renderDetail() {
       if (state.selected === null) return;
-      var line = state.selected;
-      var tab = state.detailTab;
+      var line = state.selected, tab = state.detailTab;
       detailBody.innerHTML = '<div class="j-fetching">…</div>';
       if (tab === "tree") {
         api("/api/jsonl/node", { path: src, line: line, pointer: "" }).then(function (res) {
           if (state.selected !== line) return;
           detailBody.innerHTML = "";
           if (!res.ok) { detailBody.innerHTML = '<div class="jsonl-error">failed to load</div>'; return; }
-          var tree = document.createElement("div");
-          tree.className = "jsonl-tree";
-          var node = res.j;
-          if ((node.type === "object" || node.type === "array") && node.children) {
-            node.children.forEach(function (c) { tree.appendChild(nodeEl(line, c)); });
-          } else if ((node.type === "object" || node.type === "array") && node.child_stubs) {
-            node.child_stubs.items.forEach(function (c) { tree.appendChild(nodeEl(line, c)); });
-          } else {
-            tree.appendChild(nodeEl(line, node));
-          }
-          detailBody.appendChild(tree);
+          var box = document.createElement("div");
+          box.className = "jsonl-tree jsonl-detail-tree";
+          box.setAttribute("data-detail-line", line);
+          renderDetailTree(box, line, res.j);
+          detailBody.appendChild(box);
         });
       } else {
         api("/api/jsonl/row", { path: src, line: line, format: tab }).then(function (res) {
@@ -252,39 +258,86 @@
         });
       }
     }
-
-    if (detailTabs) {
-      detailTabs.addEventListener("click", function (e) {
-        var b = e.target.closest("[data-tab]");
-        if (b) setTab(b.getAttribute("data-tab"));
-      });
+    // The detail-pane tree uses its own live DOM (not virtualized), so it can
+    // keep simple per-element handlers and its own expansion state.
+    function renderDetailTree(box, line, root) {
+      box.innerHTML = "";
+      var kids = root.children || (root.child_stubs ? root.child_stubs.items : null);
+      if (kids) kids.forEach(function (c) { box.appendChild(detailNodeEl(line, c)); });
+      else box.appendChild(detailNodeEl(line, root));
     }
-    if (closeBtn) closeBtn.addEventListener("click", closeDetail);
-    if (copyBtn) {
-      copyBtn.addEventListener("click", function () {
-        if (state.selected === null) return;
-        var fmt = state.detailTab === "pretty" ? "pretty" : "raw";
-        api("/api/jsonl/row", { path: src, line: state.selected, format: fmt }).then(function (res) {
-          if (res.ok) copyText(res.j.text, copyBtn);
+    function detailNodeEl(line, node) {
+      var wrap = document.createElement("div");
+      wrap.className = "j-node j-" + node.type;
+      var head = document.createElement("div");
+      head.className = "j-node-head";
+      var isContainer = node.type === "object" || node.type === "array";
+      var chevBtn = null;
+      if (isContainer && node.size > 0) {
+        chevBtn = document.createElement("button");
+        chevBtn.className = "j-chevron"; chevBtn.innerHTML = "▸";
+        head.appendChild(chevBtn);
+      } else { var sp = document.createElement("span"); sp.className = "j-chevron-spacer"; head.appendChild(sp); }
+      if (node.key !== undefined && node.key !== null) {
+        var k = document.createElement("span"); k.className = "j-key"; k.textContent = node.key;
+        head.appendChild(k); head.appendChild(document.createTextNode(": "));
+      }
+      var val = document.createElement("span"); val.className = "j-val";
+      val.innerHTML = isContainer ? typeBadge(node) + ' <span class="j-preview">' + esc(node.preview) + "</span>" : scalarHtml(node);
+      head.appendChild(val); wrap.appendChild(head);
+      var childBox = document.createElement("div"); childBox.className = "j-children"; childBox.hidden = true;
+      wrap.appendChild(childBox);
+      var built = false;
+      function render(kids, stub) {
+        childBox.innerHTML = "";
+        kids.forEach(function (c) { childBox.appendChild(detailNodeEl(line, c)); });
+        if (stub && stub.total > stub.shown) {
+          var m = document.createElement("div"); m.className = "j-more-row";
+          m.textContent = "… " + (stub.total - stub.shown) + " more not shown"; childBox.appendChild(m);
+        }
+        built = true;
+      }
+      if (isContainer && node.children) { render(node.children); built = true; }
+      else if (isContainer && node.child_stubs) { render(node.child_stubs.items, node.child_stubs); built = true; }
+      if (chevBtn) {
+        var open = false;
+        chevBtn.addEventListener("click", function () {
+          open = !open; chevBtn.innerHTML = open ? "▾" : "▸"; childBox.hidden = !open;
+          if (open && !built) {
+            childBox.innerHTML = '<div class="j-fetching">…</div>';
+            api("/api/jsonl/node", { path: src, line: line, pointer: node.pointer }).then(function (res) {
+              if (res.ok && res.j.children) render(res.j.children);
+              else if (res.ok && res.j.child_stubs) render(res.j.child_stubs.items, res.j.child_stubs);
+              else childBox.innerHTML = '<div class="j-fetching">(empty)</div>';
+            });
+          }
         });
-      });
+      }
+      return wrap;
     }
+
+    if (detailTabs) detailTabs.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-tab]"); if (b) setTab(b.getAttribute("data-tab"));
+    });
+    if (closeBtn) closeBtn.addEventListener("click", closeDetail);
+    if (copyBtn) copyBtn.addEventListener("click", function () {
+      if (state.selected === null) return;
+      var fmt = state.detailTab === "pretty" ? "pretty" : "raw";
+      api("/api/jsonl/row", { path: src, line: state.selected, format: fmt }).then(function (res) {
+        if (res.ok) copyText(res.j.text, copyBtn);
+      });
+    });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDetail(); });
 
     // ---- list view (virtualized) -----------------------------------------
     var clusterize = null;
-
     function rowLineNumbers() {
       if (state.searchMatches) return state.searchMatches;
       var arr = new Array(state.total);
       for (var i = 0; i < state.total; i++) arr[i] = i;
       return arr;
     }
-
-    function buildRowsHtml() {
-      return rowLineNumbers().map(rowPreviewHtml);
-    }
-
+    function buildRowsHtml() { return rowLineNumbers().map(rowHtml); }
     function refreshList() { if (clusterize) clusterize.update(buildRowsHtml()); }
 
     function ensureRows(lines, cb) {
@@ -308,17 +361,14 @@
       main.appendChild(scroll);
 
       clusterize = new Clusterize({
-        rows: buildRowsHtml(),
-        scrollElem: scroll,
-        contentElem: content,
-        rows_in_block: 30,
+        rows: buildRowsHtml(), scrollElem: scroll, contentElem: content, rows_in_block: 20,
         callbacks: {
           clusterChanged: function () {
-            var stubs = content.querySelectorAll(".jsonl-row.is-stub");
             applySelection(content);
+            var stubs = content.querySelectorAll(".jsonl-row.is-stub");
             if (!stubs.length) return;
             var lines = Array.prototype.map.call(stubs, function (el) {
-              return parseInt(el.getAttribute("data-line"), 10);
+              return parseInt(el.closest(".jsonl-rowwrap").getAttribute("data-line"), 10);
             });
             ensureRows(lines, refreshList);
           },
@@ -326,9 +376,14 @@
       });
 
       content.addEventListener("click", function (e) {
-        var row = e.target.closest(".jsonl-row");
-        if (!row || row.classList.contains("is-stub")) return;
-        selectRow(parseInt(row.getAttribute("data-line"), 10));
+        var nodeChev = e.target.closest(".j-chevron[data-node]");
+        var wrap = e.target.closest(".jsonl-rowwrap");
+        if (!wrap) return;
+        var line = parseInt(wrap.getAttribute("data-line"), 10);
+        if (nodeChev) { e.stopPropagation(); toggleNode(line, nodeChev.getAttribute("data-node")); return; }
+        if (e.target.closest(".jsonl-row-chev[data-rowchev]")) { toggleRow(line); return; }
+        if (wrap.querySelector(".jsonl-row.is-stub")) return;
+        selectRow(line);
       });
     }
 
@@ -343,7 +398,6 @@
       }
       return undefined;
     }
-
     function renderTable() {
       main.innerHTML = "";
       var cols = state.columns.slice(0, 24);
@@ -352,17 +406,14 @@
       if (state.tablePage >= pages) state.tablePage = pages - 1;
       var startI = state.tablePage * TABLE_PAGE;
       var pageLines = lines.slice(startI, startI + TABLE_PAGE);
-
       var wrap = document.createElement("div");
       wrap.className = "jsonl-table-wrap";
       var table = document.createElement("table");
       table.className = "jsonl-table";
       table.innerHTML = "<thead><tr><th class=\"j-col-num\">#</th>" +
-        cols.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("") +
-        "</tr></thead><tbody></tbody>";
+        cols.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("") + "</tr></thead><tbody></tbody>";
       wrap.appendChild(table);
       var tbody = table.querySelector("tbody");
-
       ensureRows(pageLines, function () {
         tbody.innerHTML = pageLines.map(function (line) {
           var r = state.rows[line] || {};
@@ -374,12 +425,10 @@
           return '<tr class="' + sel + '" data-line="' + line + '"><td class="j-col-num">' + line + "</td>" + tds + "</tr>";
         }).join("");
       });
-
       tbody.addEventListener("click", function (e) {
         var tr = e.target.closest("tr[data-line]");
         if (tr) selectRow(parseInt(tr.getAttribute("data-line"), 10));
       });
-
       if (pages > 1) {
         var pager = document.createElement("div");
         pager.className = "jsonl-pager";
@@ -400,15 +449,12 @@
       main.appendChild(wrap);
     }
 
-    function renderMode() {
-      if (state.mode === "table") renderTable(); else renderList();
-    }
+    function renderMode() { if (state.mode === "table") renderTable(); else renderList(); }
 
     // ---- search -----------------------------------------------------------
     var searchTimer = null;
     function runSearch(q) {
-      state.search = q;
-      state.tablePage = 0;
+      state.search = q; state.tablePage = 0;
       if (searchClear) searchClear.hidden = !q;
       if (!q) { state.searchMatches = null; updateCount(); renderMode(); return; }
       setStatus("Searching…");
@@ -417,17 +463,14 @@
         state.searchMatches = res.j.matches || [];
         (res.j.rows || []).forEach(function (row) { state.rows[row.line] = row; });
         setStatus(res.j.capped ? "Showing first " + state.searchMatches.length + " matches" : "");
-        updateCount();
-        renderMode();
+        updateCount(); renderMode();
       });
     }
-    if (searchInput) {
-      searchInput.addEventListener("input", function () {
-        clearTimeout(searchTimer);
-        var q = searchInput.value.trim();
-        searchTimer = setTimeout(function () { runSearch(q); }, 250);
-      });
-    }
+    if (searchInput) searchInput.addEventListener("input", function () {
+      clearTimeout(searchTimer);
+      var q = searchInput.value.trim();
+      searchTimer = setTimeout(function () { runSearch(q); }, 250);
+    });
     if (searchClear) searchClear.addEventListener("click", function () { searchInput.value = ""; runSearch(""); });
 
     function updateCount() {
@@ -437,17 +480,14 @@
         : state.total.toLocaleString() + " rows";
     }
 
-    if (viewToggle) {
-      viewToggle.addEventListener("click", function (e) {
-        var b = e.target.closest("[data-view]");
-        if (!b) return;
-        state.mode = b.getAttribute("data-view");
-        viewToggle.querySelectorAll("[data-view]").forEach(function (btn) {
-          btn.setAttribute("aria-pressed", btn === b ? "true" : "false");
-        });
-        renderMode();
+    if (viewToggle) viewToggle.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-view]"); if (!b) return;
+      state.mode = b.getAttribute("data-view");
+      viewToggle.querySelectorAll("[data-view]").forEach(function (btn) {
+        btn.setAttribute("aria-pressed", btn === b ? "true" : "false");
       });
-    }
+      renderMode();
+    });
 
     // ---- boot -------------------------------------------------------------
     api("/api/jsonl", { path: src, offset: 0, limit: PAGE }).then(function (res) {

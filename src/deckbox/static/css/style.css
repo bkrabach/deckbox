@@ -590,17 +590,31 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .clusterize-no-data { padding: 24px; color: var(--text-faint); font-family: var(--font-sans); }
 .clusterize-extra-row { visibility: hidden; }
 
-/* Rows */
+/* Rows — a wrapper holds the preview line plus an optional inline tree, so the
+   whole thing is one virtualized unit and multi-expand survives scrolling. */
+.jsonl-rowwrap { border-bottom: 1px solid var(--border); }
+.jsonl-rowwrap.is-selected { box-shadow: inset 3px 0 0 var(--accent); }
+.jsonl-rowwrap.is-selected > .jsonl-row { background: var(--accent-soft); }
+.jsonl-rowwrap.is-selected .jsonl-row-num { color: var(--accent-strong); }
 .jsonl-row {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 14px; border-bottom: 1px solid var(--border);
-  font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  padding: 5px 14px; font-size: 12.5px; cursor: pointer; white-space: nowrap;
 }
 .jsonl-row.is-stub { cursor: default; }
 .jsonl-row:hover { background: var(--surface-2); }
-.jsonl-row.is-selected { background: var(--accent-soft); }
-.jsonl-row.is-selected .jsonl-row-num { color: var(--accent-strong); }
-.jsonl-row-chev { width: 10px; color: var(--text-faint); flex-shrink: 0; }
+.jsonl-row.is-open { background: var(--surface-2); }
+.jsonl-row-chev {
+  width: 14px; height: 18px; padding: 0; border: none; background: transparent;
+  color: var(--text-faint); cursor: pointer; font-size: 10px; line-height: 18px;
+  text-align: center; flex-shrink: 0;
+}
+button.jsonl-row-chev:hover { color: var(--text); }
+
+/* Inline tree under an expanded row */
+.jsonl-inline-tree {
+  padding: 8px 14px 12px 38px; background: var(--code-bg);
+  font-size: 12.5px; line-height: 1.6; white-space: normal; overflow-x: auto;
+}
 .jsonl-row-num {
   min-width: 46px; color: var(--text-faint); text-align: right; flex-shrink: 0;
   font-variant-numeric: tabular-nums; user-select: none;

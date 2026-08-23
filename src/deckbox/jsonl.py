@@ -36,6 +36,8 @@ class Thresholds:
     string_preview: int = 300  # truncate string previews to this many chars
     row_preview_fields: int = 24  # top-level fields carried in a row summary
     row_field_chars: int = 120  # truncate each row-summary field value
+    nested_preview_items: int = 6  # entries shown when peeking into a nested container
+    nested_preview_chars: int = 40  # truncate each nested-preview scalar value
     max_columns: int = 24  # suggested table columns
     column_sample: int = 200  # rows sampled to detect homogeneous columns
     search_scan_cap: int = 500_000  # max rows scanned per search
@@ -151,6 +153,50 @@ def _container_preview(value: Any, th: Thresholds) -> str:
     return f"[{n} item{'s' if n != 1 else ''}]"
 
 
+def _scalar_preview_str(value: Any, chars: int) -> str:
+    t = _type_of(value)
+    if t == "string":
+        s = value[:chars]
+        return '"' + s + ('…"' if len(value) > chars else '"')
+    if t == "null":
+        return "null"
+    return str(value)
+
+
+def _rich_preview(value: Any, th: Thresholds, depth: int = 1) -> str:
+    """A compact one-line preview that peeks one level INTO a container, showing
+    `key: value` for scalar children (and nested containers as their shape).
+
+    This is what makes a nested dict/array informative in a row summary instead
+    of showing only its key names.
+    """
+    items = th.nested_preview_items
+    chars = th.nested_preview_chars
+    if isinstance(value, dict):
+        parts: list[str] = []
+        for i, (k, v) in enumerate(value.items()):
+            if i >= items:
+                parts.append("…")
+                break
+            if _type_of(v) in ("object", "array") or depth <= 0:
+                parts.append(f"{k}: {_container_preview(v, th)}")
+            else:
+                parts.append(f"{k}: {_scalar_preview_str(v, chars)}")
+        return "{" + ", ".join(parts) + "}" if parts else "{}"
+    if isinstance(value, list):
+        parts = []
+        for i, v in enumerate(value):
+            if i >= items:
+                parts.append("…")
+                break
+            if _type_of(v) in ("object", "array") or depth <= 0:
+                parts.append(_container_preview(v, th))
+            else:
+                parts.append(_scalar_preview_str(v, chars))
+        return "[" + ", ".join(parts) + "]" if parts else "[]"
+    return _scalar_preview_str(value, chars)
+
+
 def _stub(value: Any, pointer: str, key: Any, th: Thresholds) -> dict:
     """A single-level, non-recursive descriptor: enough to render one collapsed
     row per child without shipping the child's own subtree."""
@@ -241,7 +287,7 @@ def _summary_item(key: Any, v: Any, th: Thresholds) -> dict:
     t = _type_of(v)
     item: dict[str, Any] = {"k": key, "t": t}
     if t in ("object", "array"):
-        item["v"] = _container_preview(v, th)
+        item["v"] = _rich_preview(v, th)
         item["size"] = len(v)
     elif t == "string":
         item["v"] = v[: th.row_field_chars]
