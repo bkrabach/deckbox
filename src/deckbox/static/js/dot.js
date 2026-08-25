@@ -159,6 +159,73 @@
         bodyEl.appendChild(row);
       });
       inspector.hidden = false;
+      // Let oversized <pre> boxes grow into any spare vertical space, sharing
+      // it fairly when several are oversized. Deferred so layout is settled.
+      requestAnimationFrame(function () { distributePreHeights(bodyEl); });
+    }
+
+    // Grow attribute <pre> boxes to fit their content when the inspector body
+    // has room; if the combined natural height overflows, share the available
+    // space fairly (water-filling) so no single box hogs it, and each box only
+    // scrolls once it has been given as much as its fair share allows.
+    var MIN_PRE = 90;   // don't shrink a box below this when sharing
+    function distributePreHeights(bodyEl) {
+      var pres = Array.prototype.slice.call(bodyEl.querySelectorAll(".dot-attr-val pre"));
+      if (!pres.length) return;
+
+      // Reset to natural measurement: cap removed so scrollHeight is the true
+      // content height.
+      pres.forEach(function (pre) { pre.style.maxHeight = "none"; pre.style.height = "auto"; });
+
+      // Space the body can show without scrolling = its clientHeight. Height
+      // taken by everything that is NOT the growable pre boxes (keys, labels,
+      // padding, borders, other rows) is fixed; the pre boxes divide the rest.
+      var avail = bodyEl.clientHeight;
+      if (avail <= 0) return;
+      var nonPre = bodyEl.scrollHeight;  // full natural height of all content
+      pres.forEach(function (pre) { nonPre -= pre.offsetHeight; });
+      var budget = avail - nonPre;       // vertical space the pre boxes may fill
+
+      // Each box's desired (natural) height, including its own border/padding.
+      var need = pres.map(function (pre) {
+        return pre.scrollHeight + (pre.offsetHeight - pre.clientHeight);
+      });
+      var totalNeed = need.reduce(function (a, b) { return a + b; }, 0);
+
+      if (budget <= 0) {
+        // No spare room at all — fall back to the fixed cap so the body scrolls.
+        pres.forEach(function (pre) { pre.style.maxHeight = "260px"; pre.style.height = "auto"; });
+        return;
+      }
+      if (totalNeed <= budget) {
+        // Everything fits: let each box be exactly its content height.
+        pres.forEach(function (pre, i) { pre.style.maxHeight = need[i] + "px"; });
+        return;
+      }
+
+      // Not enough room for everyone: water-fill. Boxes that need less than an
+      // equal share are satisfied fully; the surplus is shared among the rest,
+      // repeated until stable. Each capped box then scrolls within its share.
+      var remaining = budget;
+      var unsettled = pres.map(function (_, i) { return i; });
+      var alloc = need.slice();
+      var changed = true;
+      while (changed && unsettled.length) {
+        changed = false;
+        var share = remaining / unsettled.length;
+        var stillUnsettled = [];
+        unsettled.forEach(function (i) {
+          if (need[i] <= share) { alloc[i] = need[i]; remaining -= need[i]; changed = true; }
+          else { stillUnsettled.push(i); }
+        });
+        if (!changed) {
+          // Split what's left equally among the remaining boxes (>= a floor).
+          var each = Math.max(MIN_PRE, remaining / stillUnsettled.length);
+          stillUnsettled.forEach(function (i) { alloc[i] = each; });
+        }
+        unsettled = stillUnsettled;
+      }
+      pres.forEach(function (pre, i) { pre.style.maxHeight = Math.round(alloc[i]) + "px"; });
     }
 
     function closeInspector() {
@@ -249,6 +316,16 @@
 
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape") closeInspector();
+    });
+
+    // Re-share the inspector's vertical space when the viewport height changes.
+    var resizeT = null;
+    window.addEventListener("resize", function () {
+      if (!inspector || inspector.hidden) return;
+      var bodyEl = inspector.querySelector(".dot-inspector-body");
+      if (!bodyEl) return;
+      clearTimeout(resizeT);
+      resizeT = setTimeout(function () { distributePreHeights(bodyEl); }, 120);
     });
 
     // ---- Layout controls (re-render on the server) ------------------------

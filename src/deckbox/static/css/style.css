@@ -509,7 +509,11 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
   margin: 0; white-space: pre-wrap; word-break: break-word;
   font-family: var(--font-mono); font-size: 12px; line-height: 1.55; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow: auto;
+  border-radius: 8px; padding: 10px 12px; overflow: auto;
+  /* max-height is assigned per-box by dot.js (distributePreHeights), which
+     grows oversized boxes into spare vertical space and shares it fairly.
+     This is the fallback for the brief moment before that runs / if JS is off. */
+  max-height: 260px;
 }
 .dot-attr-val pre.is-code { background: var(--code-bg); }
 .dot-attr-empty, .dot-inspector-hint { color: var(--text-faint); font-size: 13px; padding: 10px 0; }
