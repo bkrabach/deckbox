@@ -143,8 +143,10 @@
         kEl.textContent = k;
         var vEl = document.createElement("div");
         vEl.className = "dot-attr-val";
-        // Long / code-ish values get a <pre> for readability.
-        var val = String(attrs[k]);
+        // Long / code-ish values get a <pre> for readability. DOT attribute
+        // values carry escapes as literal backslash sequences (\n, \t) — turn
+        // them into real newlines/tabs so prompts read as authored.
+        var val = String(attrs[k]).replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\t/g, "\t");
         if (k === "tool_command" || k === "prompt" || val.length > 60 || val.indexOf("\n") !== -1) {
           var pre = document.createElement("pre");
           pre.textContent = val;

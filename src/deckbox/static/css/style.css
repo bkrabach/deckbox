@@ -30,7 +30,7 @@
   --shadow: 0 1px 2px rgba(20, 26, 40, .04), 0 6px 20px rgba(20, 26, 40, .06);
   --shadow-sm: 0 1px 2px rgba(20, 26, 40, .06);
   --code-bg: #fbfcfe;
-  --dot-grid: #eef1f6;
+  --dot-grid: #d5dbe8;
   --dot-stage-bg: #ffffff;
 }
 
@@ -51,7 +51,10 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 30px rgba(0, 0, 0, .35);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
   --code-bg: #0d1119;
-  --dot-grid: #222a3a;
+  /* The DOT stage stays light in both themes (GraphViz renders dark nodes/text
+     that need a light canvas), so the grid dot uses the same subtle-on-white
+     colour as light mode — no theme-specific value. */
+  --dot-grid: #d5dbe8;
 }
 
 * { box-sizing: border-box; }
