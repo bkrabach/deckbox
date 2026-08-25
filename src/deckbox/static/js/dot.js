@@ -310,8 +310,8 @@
       else if (act === "toggle-source") {
         var s = viewer.querySelector(".dot-source");
         if (s) s.hidden = !s.hidden;
-      } else if (act === "download") downloadSvg(svgEl());
-      else if (act === "download-png") downloadPng(svgEl(), btn);
+      } else if (act === "download") downloadSvg(svgEl(), exportBase(src));
+      else if (act === "download-png") downloadPng(svgEl(), exportBase(src), btn);
       else if (act === "copy-png") copyPng(svgEl(), btn);
       else if (act === "close-inspector") closeInspector();
     });
@@ -378,17 +378,28 @@
     try { return JSON.parse(attr) || {}; } catch (e) { return {}; }
   }
 
-  function downloadSvg(svg) {
+  // Export base name = the source file's name with its extension dropped, so
+  // 02-plan-implement-test.dot exports as 02-plan-implement-test.{png,svg}.
+  function exportBase(src) {
+    var last = String(src || "").split("/").pop() || "graph";
+    try { last = decodeURIComponent(last); } catch (e) {}
+    return last.replace(/\.[^.]+$/, "") || "graph";
+  }
+
+  function triggerDownload(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function downloadSvg(svg, name) {
     if (!svg) return;
     var clone = svg.cloneNode(true);
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     var data = new XMLSerializer().serializeToString(clone);
-    var blob = new Blob([data], { type: "image/svg+xml;charset=utf-8" });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url; a.download = "graph.svg";
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    triggerDownload(new Blob([data], { type: "image/svg+xml;charset=utf-8" }), name + ".svg");
   }
 
   // Rasterise the graph's SVG to a PNG blob at ~2x for crisp output. Uses the
@@ -430,30 +441,39 @@
     img.src = svgUrl;
   }
 
-  function downloadPng(svg, btn) {
+  function downloadPng(svg, name, btn) {
     svgToPng(svg, 2, function (blob) {
       if (!blob) { flashBtn(btn, "Failed"); return; }
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url; a.download = "graph.png";
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      triggerDownload(blob, name + ".png");
     });
   }
 
+  // Copy the diagram to the clipboard as a real PNG image. No download fallback:
+  // if the clipboard image API isn't available or is blocked, say so plainly.
+  //
+  // Safari requires the ClipboardItem to be constructed synchronously from a
+  // Promise<Blob> (async blob generation inside a later .write() loses the user
+  // gesture). We pass a promise that resolves to the rasterised PNG, which both
+  // Chromium and Safari accept and which keeps the write within the gesture.
   function copyPng(svg, btn) {
-    // Clipboard image write needs a secure context + ClipboardItem support.
-    if (!(navigator.clipboard && window.ClipboardItem && window.isSecureContext)) {
-      flashBtn(btn, "Download instead");
-      downloadPng(svg, btn);
+    if (!svg) { flashBtn(btn, "Failed"); return; }
+    if (!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem)) {
+      flashBtn(btn, window.isSecureContext ? "Unsupported" : "Needs HTTPS");
       return;
     }
-    svgToPng(svg, 2, function (blob) {
-      if (!blob) { flashBtn(btn, "Failed"); return; }
-      navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })])
-        .then(function () { flashBtn(btn, "Copied!"); })
-        .catch(function () { flashBtn(btn, "Failed"); });
+    var pngPromise = new Promise(function (resolve, reject) {
+      svgToPng(svg, 2, function (blob) { blob ? resolve(blob) : reject(new Error("render failed")); });
     });
+    Promise.resolve()
+      .then(function () {
+        return navigator.clipboard.write([new window.ClipboardItem({ "image/png": pngPromise })]);
+      })
+      .then(function () { flashBtn(btn, "Copied!"); })
+      .catch(function (err) {
+        // A denied permission surfaces here as a NotAllowedError.
+        var msg = (err && err.name === "NotAllowedError") ? "Denied" : "Failed";
+        flashBtn(btn, msg);
+      });
   }
 
   // Briefly show a status label on a toolbar button, then restore it.
