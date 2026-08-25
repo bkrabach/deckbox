@@ -30,6 +30,8 @@
   --shadow: 0 1px 2px rgba(20, 26, 40, .04), 0 6px 20px rgba(20, 26, 40, .06);
   --shadow-sm: 0 1px 2px rgba(20, 26, 40, .06);
   --code-bg: #fbfcfe;
+  --dot-grid: #eef1f6;
+  --dot-stage-bg: #ffffff;
 }
 
 /* ---- Dark theme --------------------------------------------------------- */
@@ -49,6 +51,7 @@
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 30px rgba(0, 0, 0, .35);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
   --code-bg: #0d1119;
+  --dot-grid: #222a3a;
 }
 
 * { box-sizing: border-box; }
@@ -169,18 +172,30 @@ code { font-family: var(--font-mono); font-size: .9em; }
 @media (max-width: 640px) { .filter { width: 130px; } .brand-name { display: none; } }
 
 /* ---- Layout ------------------------------------------------------------- */
+/* Full-height flex column so the file view can grow to fill the viewport. */
+body { min-height: 100vh; display: flex; flex-direction: column; }
+
 .container {
   max-width: var(--maxw);
   margin: 0 auto;
-  padding: 28px 20px 64px;
+  padding: 20px 20px 24px;
+  width: 100%;
 }
 
-/* File view can span the full viewport; the .fileview controls its own width. */
-.container--fileview { max-width: none; }
+/* File view fills the remaining vertical space and manages its own scrolling. */
+.container--fileview {
+  max-width: none; flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  padding: 14px 20px 14px;
+}
 
 /* Width modes for the file view. Readable = the standard centred column;
-   full = span the container (full viewport minus page gutters). */
-.fileview { margin: 0 auto; }
+   full = span the container (full viewport minus page gutters). The flex-column
+   fill propagates the viewport height down to viewers that opt into it (DOT). */
+.fileview {
+  margin: 0 auto; width: 100%;
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+}
 .fileview[data-width="readable"] { max-width: var(--maxw); }
 .fileview[data-width="full"] { max-width: none; }
 
@@ -348,8 +363,8 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .content-card > .highlight pre { padding: 0; }
 
 /* ---- DOT viewer --------------------------------------------------------- */
-.content-card.is-dot { padding: 0; overflow: hidden; }
-.dot-viewer { display: flex; flex-direction: column; }
+.content-card.is-dot { padding: 0; overflow: hidden; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.dot-viewer { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .dot-toolbar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 10px 12px; border-bottom: 1px solid var(--border);
@@ -381,13 +396,13 @@ code { font-family: var(--font-mono); font-size: .9em; }
 .dot-field select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .dot-loading { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 
-/* Body = stage + inspector side by side */
-.dot-body { position: relative; display: flex; align-items: stretch; }
+/* Body = stage + inspector side by side; fills remaining vertical space */
+.dot-body { position: relative; display: flex; align-items: stretch; flex: 1; min-height: 0; }
 .dot-stage {
-  position: relative; flex: 1; height: min(72vh, 760px);
+  position: relative; flex: 1; min-height: 360px;
   background:
-    radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0) 0 0 / 22px 22px,
-    #ffffff;
+    radial-gradient(circle at 1px 1px, var(--dot-grid) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--dot-stage-bg);
   overflow: hidden; cursor: grab; touch-action: none;
   /* Panning and clicking nodes must not select the graph's text. The inspector
      and source panels live outside the stage, so they stay selectable. */
@@ -497,9 +512,9 @@ code { font-family: var(--font-mono); font-size: .9em; }
 
 /* ---- Footer ------------------------------------------------------------- */
 .footer {
-  max-width: var(--maxw); margin: 0 auto; padding: 24px 20px 40px;
+  max-width: var(--maxw); margin: 0 auto; padding: 8px 20px; width: 100%;
   display: flex; align-items: center; gap: 8px;
-  color: var(--text-faint); font-size: 12.5px;
+  color: var(--text-faint); font-size: 12px;
 }
 .footer code { background: var(--surface-2); padding: .1em .4em; border-radius: 5px; }
 .footer-dot { opacity: .5; }
