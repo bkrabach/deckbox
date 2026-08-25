@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -83,10 +84,24 @@ def _render_frontmatter(data: dict[str, Any]) -> str:
         f'<div class="fm-val">{_format_value(v)}</div></div>'
         for k, v in data.items()
     )
+    # Embed the parsed data (JSON) so the client can offer a structured tree
+    # view (JSONViewer), the same component the JSON/JSONL viewer uses. The
+    # payload is HTML-escaped into a data attribute; the toggle + hydration is
+    # handled by static/js/frontmatter.js.
+    payload = html.escape(json.dumps(data, ensure_ascii=False, default=str), quote=True)
     return (
-        '<section class="frontmatter" aria-label="Document metadata">'
-        '<div class="fm-head"><span class="fm-tag">Frontmatter</span></div>'
-        f'<div class="fm-grid">{rows}</div></section>'
+        '<section class="frontmatter" data-frontmatter aria-label="Document metadata"'
+        f' data-fm-json="{payload}">'
+        '<div class="fm-head">'
+        '<span class="fm-tag">Frontmatter</span>'
+        '<div class="fm-viewtoggle jsonl-seg" role="group" aria-label="Frontmatter view" hidden data-fm-toggle>'
+        '<button type="button" data-fm-view="table" aria-pressed="true">Table</button>'
+        '<button type="button" data-fm-view="tree" aria-pressed="false">Tree</button>'
+        "</div>"
+        "</div>"
+        f'<div class="fm-grid" data-fm-table>{rows}</div>'
+        '<div class="fm-tree" data-fm-tree hidden></div>'
+        "</section>"
     )
 
 

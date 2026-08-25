@@ -387,12 +387,20 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
   margin: 0 0 1.6em; border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface-2); overflow: hidden;
 }
-.fm-head { padding: 7px 14px; border-bottom: 1px solid var(--border); background: var(--surface-3); }
+.fm-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 14px; border-bottom: 1px solid var(--border); background: var(--surface-3);
+}
 .fm-tag {
   font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
   color: var(--text-faint);
 }
+.fm-viewtoggle { margin-left: auto; }
+.fm-viewtoggle button { height: 24px; padding: 0 10px; font-size: 11.5px; }
+.fm-tree { padding: 12px 14px; overflow-x: auto; }
 .fm-grid { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; }
+/* The Table/Tree toggle uses the hidden attribute; a display rule must not win over it. */
+.fm-grid[hidden], .fm-tree[hidden] { display: none; }
 .fm-row { display: contents; }
 .fm-key {
   padding: 9px 14px; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600;
@@ -403,7 +411,10 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
   word-break: break-word; min-width: 0;
 }
 .fm-row:first-child .fm-key, .fm-row:first-child .fm-val { border-top: none; }
-/* Scalar list -> inline pills */
+/* Scalar list -> inline pills. Scoped under .markdown-body so it out-specifies
+   the generic `.markdown-body ul/ol { padding-left: 1.5em }` prose indent, which
+   would otherwise shove these off the left alignment of a plain scalar value. */
+.markdown-body .fm-list { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
 .fm-list { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
 .fm-list > li {
   margin: 0; padding: 1px 9px; border-radius: 999px;
@@ -413,7 +424,7 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
 }
 /* List of objects/lists (e.g. a `steps` array) -> stacked block cards so long
    values wrap instead of stretching the row off-screen. */
-.fm-list-block { display: block; }
+.fm-list-block { display: block; padding-left: 0; }
 .fm-list-block > li {
   display: block; padding: 8px 10px; border-radius: 8px; margin: 0 0 6px;
   background: var(--surface); border: 1px solid var(--border);
