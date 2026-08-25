@@ -35,6 +35,50 @@
       if (noMatch) noMatch.hidden = visible !== 0;
     }
 
+    // ---- Alphabet jump nav ------------------------------------------------
+    // Only worth showing on a long, well-distributed listing: it should feel
+    // like a shortcut, not clutter on a handful of files.
+    var rail = document.querySelector("[data-alpha-rail]");
+    var ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+    var railActive = false;
+    if (rail && entries.length >= 30) {
+      var present = {};             // letter -> first entry element
+      entries.forEach(function (el) {
+        var l = el.getAttribute("data-letter") || "#";
+        if (!present[l]) present[l] = el;
+      });
+      var distinctAlpha = ALPHA.filter(function (l) { return present[l]; }).length;
+      if (distinctAlpha >= 8) {
+        railActive = true;
+        var order = (present["#"] ? ["#"] : []).concat(ALPHA);
+        order.forEach(function (l) {
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "alpha-key";
+          btn.textContent = l;
+          if (present[l]) {
+            btn.addEventListener("click", function () { jumpTo(l); });
+          } else {
+            btn.disabled = true;
+            btn.classList.add("is-empty");
+          }
+          rail.appendChild(btn);
+        });
+        rail.hidden = false;
+        document.querySelector(".listing").classList.add("has-alpha-rail");
+
+        function jumpTo(letter) {
+          var el = present[letter];
+          if (!el || el.hidden) return;
+          el.scrollIntoView({ block: "start", behavior: "smooth" });
+          // Brief highlight so the eye lands where it jumped.
+          el.classList.remove("alpha-flash");
+          void el.offsetWidth;
+          el.classList.add("alpha-flash");
+        }
+      }
+    }
+
     filter.addEventListener("input", applyFilter);
     filter.addEventListener("keydown", function (e) {
       if (e.key === "Escape") { filter.value = ""; applyFilter(); filter.blur(); }

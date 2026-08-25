@@ -242,6 +242,33 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
   background: var(--surface-3); color: var(--text-muted); }
 .badge-folder { background: var(--accent-soft); color: var(--accent-strong); }
 
+/* Alphabet jump nav — a sticky letter rail beside long, well-spread listings. */
+.listing.has-alpha-rail { display: flex; align-items: flex-start; gap: 12px; }
+.listing.has-alpha-rail .entries { flex: 1; min-width: 0; }
+.alpha-rail {
+  position: sticky; top: calc(var(--topbar-h) + 12px);
+  display: flex; flex-direction: column; gap: 1px; flex-shrink: 0;
+  max-height: calc(100vh - var(--topbar-h) - 24px);
+}
+.alpha-key {
+  width: 20px; height: 16px; padding: 0; border: none; border-radius: 5px;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  font-family: var(--font-sans); font-size: 10.5px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.alpha-key:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-strong); }
+.alpha-key.is-empty { color: var(--text-faint); opacity: .35; cursor: default; }
+@media (max-width: 560px) { .alpha-rail { display: none; } }
+
+/* Jump target clears the sticky topbar instead of tucking under it. */
+.entry { scroll-margin-top: calc(var(--topbar-h) + 14px); }
+
+@keyframes alpha-flash-kf {
+  0% { background: var(--accent-soft); }
+  100% { background: transparent; }
+}
+.entry.alpha-flash { animation: alpha-flash-kf 1s ease-out; }
+
 .no-match { color: var(--text-faint); text-align: center; padding: 24px; }
 .empty { text-align: center; color: var(--text-faint); padding: 70px 20px; }
 .empty svg { width: 48px; height: 48px; opacity: .5; }

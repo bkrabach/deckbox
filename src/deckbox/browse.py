@@ -40,6 +40,16 @@ class Entry:
     def mtime_human(self) -> str:
         return datetime.fromtimestamp(self.mtime).astimezone().strftime("%Y-%m-%d %H:%M")
 
+    @property
+    def letter(self) -> str:
+        """First-character bucket for the alphabet jump nav: A-Z, or '#'."""
+        for ch in self.name:
+            if ch.isalpha():
+                return ch.upper()
+            if ch.isalnum():
+                return "#"
+        return "#"
+
 
 @dataclass
 class Crumb:

@@ -11,9 +11,10 @@
 {% block content %}
   <div class="listing" data-listing>
     {% if listing.entries %}
+      <nav class="alpha-rail" data-alpha-rail aria-label="Jump to letter" hidden></nav>
       <ul class="entries" role="list">
         {% for e in listing.entries %}
-          <li class="entry {{ 'is-dir' if e.is_dir else 'is-file' }}" data-name="{{ e.name|lower }}">
+          <li class="entry {{ 'is-dir' if e.is_dir else 'is-file' }}" data-name="{{ e.name|lower }}" data-letter="{{ e.letter }}">
             <a class="entry-link" href="/view/{{ e.rel }}">
               <span class="entry-icon kind-{{ e.kind }}">{{ icon(e.kind) }}</span>
               <span class="entry-name">{{ e.name }}</span>
