@@ -60,8 +60,13 @@ def _format_value(value: Any) -> str:
     if isinstance(value, (list, tuple)):
         if not value:
             return '<span class="fm-null">—</span>'
+        # A list of scalars renders as compact inline pills; a list containing
+        # objects/lists (e.g. a `steps` array) renders as stacked block cards so
+        # long values wrap instead of stretching the row off-screen.
+        complex_items = any(isinstance(v, (dict, list, tuple)) for v in value)
+        cls = "fm-list fm-list-block" if complex_items else "fm-list"
         items = "".join(f"<li>{_format_value(v)}</li>" for v in value)
-        return f'<ul class="fm-list">{items}</ul>'
+        return f'<ul class="{cls}">{items}</ul>'
     if isinstance(value, dict):
         rows = "".join(
             f'<div class="fm-subrow"><span class="fm-subkey">{html.escape(str(k))}</span>'

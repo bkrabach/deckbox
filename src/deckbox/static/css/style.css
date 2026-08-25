@@ -403,17 +403,29 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
   word-break: break-word; min-width: 0;
 }
 .fm-row:first-child .fm-key, .fm-row:first-child .fm-val { border-top: none; }
+/* Scalar list -> inline pills */
 .fm-list { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
 .fm-list > li {
   margin: 0; padding: 1px 9px; border-radius: 999px;
   background: var(--surface); border: 1px solid var(--border);
   font-size: 12.5px; font-family: var(--font-mono);
+  overflow-wrap: anywhere;
 }
+/* List of objects/lists (e.g. a `steps` array) -> stacked block cards so long
+   values wrap instead of stretching the row off-screen. */
+.fm-list-block { display: block; }
+.fm-list-block > li {
+  display: block; padding: 8px 10px; border-radius: 8px; margin: 0 0 6px;
+  background: var(--surface); border: 1px solid var(--border);
+  font-family: inherit; font-size: inherit; overflow-wrap: anywhere;
+}
+.fm-list-block > li:last-child { margin-bottom: 0; }
+
 .fm-null { color: var(--text-faint); }
-.fm-sub { display: flex; flex-direction: column; gap: 3px; }
-.fm-subrow { display: flex; gap: 8px; }
-.fm-subkey { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); min-width: 90px; }
-.fm-subval { font-size: 13px; min-width: 0; }
+.fm-sub { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fm-subrow { display: flex; gap: 8px; min-width: 0; align-items: baseline; }
+.fm-subkey { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); min-width: 84px; flex-shrink: 0; }
+.fm-subval { font-size: 13px; flex: 1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
 @media (max-width: 520px) {
   .fm-grid { grid-template-columns: 1fr; }
   .fm-key { padding-bottom: 0; border-top: 1px solid var(--border); }
