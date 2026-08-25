@@ -70,11 +70,31 @@
         function jumpTo(letter) {
           var el = present[letter];
           if (!el || el.hidden) return;
-          el.scrollIntoView({ block: "start", behavior: "smooth" });
+          fastScrollTo(el);
           // Brief highlight so the eye lands where it jumped.
           el.classList.remove("alpha-flash");
           void el.offsetWidth;
           el.classList.add("alpha-flash");
+        }
+
+        // A quick, fixed-duration smooth scroll — the native "smooth" behaviour
+        // is distance-proportional and feels tediously slow across a long list.
+        function fastScrollTo(el) {
+          var offset = parseInt(getComputedStyle(el).scrollMarginTop, 10) || 0;
+          var targetY = window.scrollY + el.getBoundingClientRect().top - offset;
+          var startY = window.scrollY;
+          var dist = targetY - startY;
+          if (Math.abs(dist) < 2) return;
+          var duration = 260;  // ms — snappy regardless of distance
+          var startT = null;
+          function step(t) {
+            if (startT === null) startT = t;
+            var p = Math.min(1, (t - startT) / duration);
+            var eased = 1 - Math.pow(1 - p, 3);  // easeOutCubic
+            window.scrollTo(0, startY + dist * eased);
+            if (p < 1) requestAnimationFrame(step);
+          }
+          requestAnimationFrame(step);
         }
       }
     }

@@ -13,9 +13,27 @@ from pygments.util import ClassNotFound
 _FORMATTER = HtmlFormatter(cssclass="highlight", linenos="table", wrapcode=True)
 
 
+def _strip_container_bg(css: str, selector: str) -> str:
+    """Drop pygments' own ``<selector> { background: ... }`` container rule so the
+    app's themed ``--code-bg`` controls the code-block surface instead."""
+    needle = f"{selector} {{"
+    return "\n".join(line for line in css.splitlines() if not line.strip().startswith(needle))
+
+
 def pygments_css() -> str:
-    """CSS for the syntax-highlight token classes (scoped to .highlight)."""
-    return HtmlFormatter(style="default").get_style_defs(".highlight")
+    """Theme-aware CSS for the syntax-highlight token classes.
+
+    Light tokens (``default``) apply normally; a dark palette is scoped under
+    ``[data-theme="dark"] .highlight`` so code is readable in dark mode. Both
+    have their hardcoded container background stripped — the app themes the
+    surface via ``--code-bg`` — which also fixes pygments' ``.highlight``
+    background winning over the app rule purely by stylesheet load order.
+    """
+    light = HtmlFormatter(style="default").get_style_defs(".highlight")
+    dark = HtmlFormatter(style="github-dark").get_style_defs('[data-theme="dark"] .highlight')
+    light = _strip_container_bg(light, ".highlight")
+    dark = _strip_container_bg(dark, '[data-theme="dark"] .highlight')
+    return f"{light}\n{dark}"
 
 
 def _read_text(path: Path) -> str:
