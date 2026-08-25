@@ -368,6 +368,14 @@
     if (rankdirSel) rankdirSel.addEventListener("change", relayout);
 
     // ---- Init -------------------------------------------------------------
+    // Copy-to-clipboard as an image only works in a secure context (which
+    // browsers grant for HTTPS and for localhost / 127.0.0.1) with ClipboardItem
+    // support. Where it can't work, hide the button rather than offer a dead one.
+    if (!(window.isSecureContext && navigator.clipboard && navigator.clipboard.write && window.ClipboardItem)) {
+      var copyBtn = viewer.querySelector('[data-act="copy-png"]');
+      if (copyBtn) copyBtn.hidden = true;
+    }
+
     syncRankdirVisibility();
     bindNodes();
     requestAnimationFrame(fit);
