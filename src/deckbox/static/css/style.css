@@ -382,6 +382,44 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
 .markdown-body h1:hover .headerlink, .markdown-body h2:hover .headerlink,
 .markdown-body h3:hover .headerlink { opacity: 1; }
 
+/* YAML frontmatter — rendered as a labeled key/value card, not a run-on. */
+.frontmatter {
+  margin: 0 0 1.6em; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); overflow: hidden;
+}
+.fm-head { padding: 7px 14px; border-bottom: 1px solid var(--border); background: var(--surface-3); }
+.fm-tag {
+  font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.fm-grid { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; }
+.fm-row { display: contents; }
+.fm-key {
+  padding: 9px 14px; font-family: var(--font-mono); font-size: 12.5px; font-weight: 600;
+  color: var(--accent-strong); border-top: 1px solid var(--border); word-break: break-word;
+}
+.fm-val {
+  padding: 9px 14px; font-size: 13.5px; color: var(--text); border-top: 1px solid var(--border);
+  word-break: break-word; min-width: 0;
+}
+.fm-row:first-child .fm-key, .fm-row:first-child .fm-val { border-top: none; }
+.fm-list { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.fm-list > li {
+  margin: 0; padding: 1px 9px; border-radius: 999px;
+  background: var(--surface); border: 1px solid var(--border);
+  font-size: 12.5px; font-family: var(--font-mono);
+}
+.fm-null { color: var(--text-faint); }
+.fm-sub { display: flex; flex-direction: column; gap: 3px; }
+.fm-subrow { display: flex; gap: 8px; }
+.fm-subkey { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); min-width: 90px; }
+.fm-subval { font-size: 13px; min-width: 0; }
+@media (max-width: 520px) {
+  .fm-grid { grid-template-columns: 1fr; }
+  .fm-key { padding-bottom: 0; border-top: 1px solid var(--border); }
+  .fm-val { padding-top: 3px; border-top: none; }
+}
+
 /* Code blocks (Pygments .highlight) — always on a stable light-ish surface */
 .highlight {
   position: relative;
