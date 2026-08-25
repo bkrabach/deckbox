@@ -188,4 +188,57 @@
         .catch(function () { flash("Failed", false); });
     });
   }
+
+  // ---- Copy button on markdown code blocks (reveal on hover) --------------
+  function clipboardWrite(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error("copy failed"));
+    });
+  }
+
+  var codeBlocks = document.querySelectorAll(".markdown-body .highlight");
+  Array.prototype.forEach.call(codeBlocks, function (block) {
+    // The code text lives in <code> (pygments), falling back to <pre>. Line
+    // numbers, when present, live in a separate .linenos cell — exclude them.
+    var codeEl = block.querySelector("td:not(.linenos) code, .code code, pre code, code, pre");
+    if (!codeEl) return;
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "code-copy";
+    btn.setAttribute("aria-label", "Copy code");
+    btn.innerHTML =
+      '<svg class="code-copy-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>' +
+      '<span class="code-copy-label">Copy</span>';
+    block.appendChild(btn);
+
+    var resetT = null;
+    btn.addEventListener("click", function () {
+      var text = (codeEl.innerText || codeEl.textContent || "").replace(/\n$/, "");
+      clipboardWrite(text).then(function () {
+        btn.classList.add("is-copied");
+        var label = btn.querySelector(".code-copy-label");
+        if (label) label.textContent = "Copied!";
+        if (resetT) clearTimeout(resetT);
+        resetT = setTimeout(function () {
+          btn.classList.remove("is-copied");
+          if (label) label.textContent = "Copy";
+        }, 1500);
+      }).catch(function () {
+        var label = btn.querySelector(".code-copy-label");
+        if (label) label.textContent = "Failed";
+        if (resetT) clearTimeout(resetT);
+        resetT = setTimeout(function () { if (label) label.textContent = "Copy"; }, 1500);
+      });
+    });
+  });
 })();
