@@ -311,6 +311,8 @@
         var s = viewer.querySelector(".dot-source");
         if (s) s.hidden = !s.hidden;
       } else if (act === "download") downloadSvg(svgEl());
+      else if (act === "download-png") downloadPng(svgEl(), btn);
+      else if (act === "copy-png") copyPng(svgEl(), btn);
       else if (act === "close-inspector") closeInspector();
     });
 
@@ -387,6 +389,80 @@
     a.href = url; a.download = "graph.svg";
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  // Rasterise the graph's SVG to a PNG blob at ~2x for crisp output. Uses the
+  // SVG's own width/height (its intrinsic size), not the on-screen zoom, so the
+  // export is the full diagram regardless of pan/zoom state.
+  function svgToPng(svg, scale, cb) {
+    if (!svg) { cb(null); return; }
+    scale = scale || 2;
+    var clone = svg.cloneNode(true);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+    // Determine intrinsic pixel size from width/height or the viewBox.
+    var w = parseFloat(clone.getAttribute("width")) || 0;
+    var h = parseFloat(clone.getAttribute("height")) || 0;
+    var vb = (clone.getAttribute("viewBox") || "").split(/[ ,]+/).map(parseFloat);
+    if ((!w || !h) && vb.length === 4) { w = w || vb[2]; h = h || vb[3]; }
+    if (!w || !h) { var r = svg.getBoundingClientRect(); w = r.width; h = r.height; }
+    // Give the export a solid background (the on-screen stage is white).
+    var bg = getComputedStyle(document.querySelector(".dot-stage") || document.body).backgroundColor;
+
+    var data = new XMLSerializer().serializeToString(clone);
+    var svgUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(data);
+    var img = new Image();
+    img.onload = function () {
+      var canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(w * scale));
+      canvas.height = Math.max(1, Math.round(h * scale));
+      var ctx = canvas.getContext("2d");
+      if (bg && bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
+        ctx.fillStyle = bg;
+      } else {
+        ctx.fillStyle = "#ffffff";
+      }
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(function (blob) { cb(blob); }, "image/png");
+    };
+    img.onerror = function () { cb(null); };
+    img.src = svgUrl;
+  }
+
+  function downloadPng(svg, btn) {
+    svgToPng(svg, 2, function (blob) {
+      if (!blob) { flashBtn(btn, "Failed"); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = "graph.png";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    });
+  }
+
+  function copyPng(svg, btn) {
+    // Clipboard image write needs a secure context + ClipboardItem support.
+    if (!(navigator.clipboard && window.ClipboardItem && window.isSecureContext)) {
+      flashBtn(btn, "Download instead");
+      downloadPng(svg, btn);
+      return;
+    }
+    svgToPng(svg, 2, function (blob) {
+      if (!blob) { flashBtn(btn, "Failed"); return; }
+      navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })])
+        .then(function () { flashBtn(btn, "Copied!"); })
+        .catch(function () { flashBtn(btn, "Failed"); });
+    });
+  }
+
+  // Briefly show a status label on a toolbar button, then restore it.
+  function flashBtn(btn, text) {
+    if (!btn) return;
+    if (btn._flashT) clearTimeout(btn._flashT);
+    if (btn._label === undefined) btn._label = btn.textContent;
+    btn.textContent = text;
+    btn._flashT = setTimeout(function () { btn.textContent = btn._label; }, 1500);
   }
 
   document.querySelectorAll("[data-deckbox-dot]").forEach(initViewer);

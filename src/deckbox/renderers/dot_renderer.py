@@ -320,7 +320,9 @@ def _viewer(svg: str, escaped_source: str, *, src_path: str, nodes_json: str) ->
     <button type="button" data-act="fit" title="Fit to view">Fit</button>
     <button type="button" data-act="reset" title="Reset to 100%">100%</button>
     <button type="button" data-act="toggle-source" title="Toggle DOT source">&lt;/&gt; Source</button>
-    <button type="button" data-act="download" title="Download SVG">Download</button>
+    <button type="button" data-act="copy-png" title="Copy diagram as PNG">Copy PNG</button>
+    <button type="button" data-act="download-png" title="Download diagram as PNG">PNG</button>
+    <button type="button" data-act="download" title="Download SVG">SVG</button>
   </div>
   <div class="dot-body">
     <div class="dot-stage">
