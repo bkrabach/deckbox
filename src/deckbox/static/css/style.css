@@ -378,9 +378,60 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
 .markdown-body img { max-width: 100%; border-radius: var(--radius-sm); }
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
 .markdown-body code { background: var(--surface-3); padding: .15em .4em; border-radius: 5px; }
-.markdown-body .headerlink { opacity: 0; margin-left: .35em; text-decoration: none; color: var(--text-faint); }
+/* Heading permalink (markdown-it anchors plugin emits .header-anchor). */
+.markdown-body .headerlink, .markdown-body .header-anchor {
+  opacity: 0; margin-left: .35em; text-decoration: none; color: var(--text-faint);
+}
 .markdown-body h1:hover .headerlink, .markdown-body h2:hover .headerlink,
-.markdown-body h3:hover .headerlink { opacity: 1; }
+.markdown-body h3:hover .headerlink, .markdown-body h4:hover .headerlink,
+.markdown-body h1:hover .header-anchor, .markdown-body h2:hover .header-anchor,
+.markdown-body h3:hover .header-anchor, .markdown-body h4:hover .header-anchor { opacity: 1; }
+
+/* Task lists (GFM checkboxes) */
+.markdown-body .task-list-item, .markdown-body .contains-task-list > li { list-style: none; }
+.markdown-body .contains-task-list { padding-left: .4em; }
+.markdown-body .task-list-item-checkbox, .markdown-body input[type="checkbox"] {
+  margin: 0 .5em 0 -1.3em; vertical-align: middle;
+}
+
+/* Definition lists */
+.markdown-body dl { margin: .85em 0; }
+.markdown-body dt { font-weight: 680; margin-top: .6em; }
+.markdown-body dd { margin: .2em 0 .2em 1.4em; color: var(--text); }
+
+/* Admonitions (!!! note "Title") */
+.markdown-body .admonition {
+  margin: 1.1em 0; padding: 10px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+}
+.markdown-body .admonition-title {
+  margin: 0 0 .4em; font-weight: 680; font-size: .95em; letter-spacing: -.01em;
+}
+.markdown-body .admonition > :last-child { margin-bottom: 0; }
+.markdown-body .admonition.warning, .markdown-body .admonition.caution { border-left-color: #e5711b; }
+.markdown-body .admonition.danger, .markdown-body .admonition.error { border-left-color: #e5484d; }
+.markdown-body .admonition.tip, .markdown-body .admonition.success { border-left-color: #12a594; }
+
+/* Markdown viewer shell — Rendered | Source toggle + copy (parity with DOT/JSONL) */
+.md-viewer { display: flex; flex-direction: column; }
+.md-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+  font-family: var(--font-sans);
+}
+.md-spacer { flex: 1; }
+.md-toolbar .jsonl-seg button { height: 28px; padding: 0 12px; font-size: 12.5px; }
+.md-copy {
+  height: 28px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-family: var(--font-sans);
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.md-copy:hover { background: var(--surface-2); }
+.md-source {
+  margin: 0; font-size: 12.5px; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-word; max-height: none;
+}
 
 /* YAML frontmatter — rendered as a labeled key/value card, not a run-on. */
 .frontmatter {

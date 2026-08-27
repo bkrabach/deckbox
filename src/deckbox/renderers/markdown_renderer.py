@@ -1,4 +1,11 @@
-"""Markdown rendering with a rich, modern feature set."""
+"""Markdown rendering with a CommonMark / GFM engine (markdown-it-py).
+
+python-markdown is not CommonMark-compliant: it fails to render a list that
+follows a paragraph line with no blank line between them, and it needs 4-space
+indentation for nested lists. Real-world (GitHub-authored) markdown relies on
+both, so this uses markdown-it-py's ``gfm-like`` preset, which renders those the
+way GitHub does. YAML frontmatter is split off and rendered as its own card.
+"""
 
 from __future__ import annotations
 
@@ -8,29 +15,69 @@ import re
 from pathlib import Path
 from typing import Any
 
-import markdown
 import yaml
+from markdown_it import MarkdownIt
+from mdit_py_plugins.admon import admon_plugin
+from mdit_py_plugins.anchors import anchors_plugin
+from mdit_py_plugins.deflist import deflist_plugin
+from mdit_py_plugins.footnote import footnote_plugin
+from mdit_py_plugins.tasklists import tasklists_plugin
+from pygments import highlight as _pyg_highlight
+from pygments.formatters import HtmlFormatter
+from pygments.lexers import get_lexer_by_name
+from pygments.util import ClassNotFound
 
-_EXTENSIONS = [
-    "pymdownx.superfences",
-    "pymdownx.highlight",
-    "pymdownx.tasklist",
-    "pymdownx.tilde",
-    "pymdownx.betterem",
-    "pymdownx.magiclink",
-    "pymdownx.saneheaders",
-    "tables",
-    "footnotes",
-    "sane_lists",
-    "admonition",
-    "toc",
-]
 
-_EXTENSION_CONFIGS = {
-    "pymdownx.highlight": {"css_class": "highlight", "guess_lang": False},
-    "pymdownx.tasklist": {"custom_checkbox": True},
-    "toc": {"permalink": True},
-}
+def _highlight_code(code: str, lang: str) -> str:
+    """Themed pygments HTML for a fenced block, or "" to fall back to plain."""
+    if not lang:
+        return ""
+    try:
+        lexer = get_lexer_by_name(lang, stripnl=False)
+    except ClassNotFound:
+        return ""
+    return _pyg_highlight(code, lexer, HtmlFormatter(cssclass="highlight", wrapcode=True))
+
+
+def _render_fence(tokens, idx, options, env):
+    """Fence renderer that emits the same `<div class="highlight">` structure the
+    old pipeline produced (so the themed CSS and the copy-on-hover button keep
+    working), for both syntax-highlighted and plain (no-language) blocks.
+
+    Assigned into ``md.renderer.rules["fence"]``, which invokes rules as plain
+    functions with ``(tokens, idx, options, env)`` — no bound renderer arg."""
+    token = tokens[idx]
+    info = (token.info or "").strip()
+    lang = info.split()[0] if info else ""
+    out = _highlight_code(token.content, lang)
+    if out:
+        return out + "\n"
+    esc = html.escape(token.content)
+    cls = f' class="language-{html.escape(lang)}"' if lang else ""
+    return f'<div class="highlight"><pre><code{cls}>{esc}</code></pre></div>\n'
+
+
+def _make_md() -> MarkdownIt:
+    md = MarkdownIt("gfm-like", {"html": False, "linkify": True, "typographer": False})
+    md.use(footnote_plugin)
+    md.use(deflist_plugin)
+    md.use(admon_plugin)
+    md.use(tasklists_plugin, enabled=True, label=True)
+    # Heading anchors with a hover-revealed pilcrow permalink (styled via CSS).
+    md.use(
+        anchors_plugin,
+        min_level=1,
+        max_level=4,
+        permalink=True,
+        permalinkSymbol="¶",
+        permalinkSpace=False,
+    )
+    md.renderer.rules["fence"] = _render_fence
+    return md
+
+
+# One shared parser (markdown-it-py instances are reusable and stateless).
+_MD = _make_md()
 
 
 # Leading YAML frontmatter: --- ... --- (or the ... terminator) at the very top.
@@ -108,7 +155,24 @@ def _render_frontmatter(data: dict[str, Any]) -> str:
 def render(path: Path) -> str:
     text = path.read_text(encoding="utf-8", errors="replace")
     frontmatter, body_text = _split_frontmatter(text)
-    md = markdown.Markdown(extensions=_EXTENSIONS, extension_configs=_EXTENSION_CONFIGS)
-    body = md.convert(body_text)
+    body = _MD.render(body_text)
     fm_html = _render_frontmatter(frontmatter) if frontmatter else ""
-    return f'<article class="markdown-body">{fm_html}{body}</article>'
+    rendered = f'<article class="markdown-body">{fm_html}{body}</article>'
+    # Wrap in a viewer shell with a Rendered | Source toggle and a copy button,
+    # matching the DOT/JSONL viewers. The raw source is served in a <pre> for the
+    # Source view; static/js/markdown.js wires the toggle + copy.
+    source = html.escape(text)
+    return (
+        '<div class="md-viewer" data-md-viewer>'
+        '<div class="md-toolbar">'
+        '<div class="jsonl-seg" role="group" aria-label="View mode" data-md-toggle>'
+        '<button type="button" data-md-view="rendered" aria-pressed="true">Rendered</button>'
+        '<button type="button" data-md-view="source" aria-pressed="false">Source</button>'
+        "</div>"
+        '<span class="md-spacer"></span>'
+        '<button type="button" class="md-copy" data-md-copy>Copy</button>'
+        "</div>"
+        f'<div class="md-rendered" data-md-rendered>{rendered}</div>'
+        f'<pre class="md-source jsonl-rawpre" data-md-source hidden>{source}</pre>'
+        "</div>"
+    )

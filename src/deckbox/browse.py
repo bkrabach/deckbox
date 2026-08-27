@@ -42,12 +42,16 @@ class Entry:
 
     @property
     def letter(self) -> str:
-        """First-character bucket for the alphabet jump nav: A-Z, or '#'."""
-        for ch in self.name:
-            if ch.isalpha():
-                return ch.upper()
-            if ch.isalnum():
-                return "#"
+        """First-character bucket for the alphabet jump nav: A-Z, or '#'.
+
+        Bucketed by the FIRST character only, so a name like ``_planning`` (which
+        sorts to the top of the list) lands in the '#' bucket at the start of the
+        rail — clicking 'P' must not jump to it. Only an ASCII A-Z leading char
+        counts as a letter; digits, underscores, dots, and accented leads -> '#'.
+        """
+        ch = self.name[:1]
+        if ch.isascii() and ch.isalpha():
+            return ch.upper()
         return "#"
 
 
