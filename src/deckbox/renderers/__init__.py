@@ -151,7 +151,7 @@ def render_inline(path: Path, kind: str, *, src_path: str = "") -> str:
     if kind == "markdown":
         from deckbox.renderers.markdown_renderer import render as render_md
 
-        return render_md(path)
+        return render_md(path, src_path=src_path)
     if kind == "jsonl":
         from deckbox.renderers.jsonl_renderer import render as render_jsonl
 

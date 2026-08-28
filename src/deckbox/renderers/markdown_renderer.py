@@ -12,7 +12,7 @@ from __future__ import annotations
 import html
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -152,10 +152,71 @@ def _render_frontmatter(data: dict[str, Any]) -> str:
     )
 
 
-def render(path: Path) -> str:
+# A URL is "external" (left untouched) if it has a scheme (http:, mailto:, …),
+# is protocol-relative (//host), an in-page anchor (#sec), or already absolute (/x).
+_ABSOLUTE_URL_RE = re.compile(r"^(?:[a-zA-Z][a-zA-Z0-9+.-]*:|//|#|/|data:|mailto:)")
+# Matches href="..." and src="..." attribute values in the rendered HTML.
+_ATTR_RE = re.compile(r'(?P<attr>\b(?:href|src)=")(?P<url>[^"]*)"')
+
+
+def _resolve_relative(url: str, base_dir: str, route: str) -> str:
+    """Resolve a document-relative URL against the current file's directory and
+    map it onto a server route (/view for links, /raw for images/media).
+
+    Keeps a trailing #anchor and ?query on the resolved path. Returns the URL
+    unchanged if it's external, absolute, or a bare anchor.
+    """
+    if not url or _ABSOLUTE_URL_RE.match(url):
+        return url
+
+    # Split off a trailing #fragment / ?query so only the path is resolved.
+    frag = ""
+    for sep in ("#", "?"):
+        i = url.find(sep)
+        if i != -1:
+            frag = url[i:] + frag if sep == "#" else url[i:]
+            url = url[:i]
+    if not url:  # was just "#anchor" (handled above) or "?query"
+        return url + frag
+
+    from urllib.parse import quote, unquote
+
+    # base_dir is the POSIX dir of the current file's /view path; join + normalise.
+    joined = PurePosixPath(base_dir) / unquote(url)
+    parts: list[str] = []
+    for part in joined.parts:
+        if part == "..":
+            if parts:
+                parts.pop()
+        elif part not in ("", "."):
+            parts.append(part)
+    resolved = "/".join(parts)
+    return f"{route}/{quote(resolved)}{frag}"
+
+
+def _rewrite_relative_links(html_body: str, src_path: str) -> str:
+    """Rewrite document-relative href/src in rendered markdown to server routes.
+
+    Links (``href``) point at other files -> /view/<path> (so they open in the
+    viewer); media (``src``, e.g. images) -> /raw/<path> (so the bytes load).
+    """
+    if not src_path:
+        return html_body
+    base_dir = str(PurePosixPath(src_path).parent)
+
+    def repl(m: re.Match[str]) -> str:
+        attr, url = m.group("attr"), m.group("url")
+        route = "/raw" if attr.startswith("src") else "/view"
+        return f'{attr}{_resolve_relative(url, base_dir, route)}"'
+
+    return _ATTR_RE.sub(repl, html_body)
+
+
+def render(path: Path, *, src_path: str = "") -> str:
     text = path.read_text(encoding="utf-8", errors="replace")
     frontmatter, body_text = _split_frontmatter(text)
     body = _MD.render(body_text)
+    body = _rewrite_relative_links(body, src_path)
     fm_html = _render_frontmatter(frontmatter) if frontmatter else ""
     rendered = f'<article class="markdown-body">{fm_html}{body}</article>'
     # Wrap in a viewer shell with a Rendered | Source toggle and a copy button,

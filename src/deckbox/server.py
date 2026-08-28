@@ -174,7 +174,7 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
 
     def _render_dir(request: Request, root: Path, target: Path) -> HTMLResponse:
         listing = list_directory(root, target)
-        readme_html = _maybe_readme(target)
+        readme_html = _maybe_readme(target, root)
         ctx = base_ctx(request)
         ctx.update(
             {
@@ -228,14 +228,17 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
     return app
 
 
-def _maybe_readme(directory: Path) -> str | None:
+def _maybe_readme(directory: Path, root: Path) -> str | None:
     for name in ("README.md", "readme.md", "Readme.md", "README.markdown"):
         candidate = directory / name
         if candidate.is_file():
             try:
                 from deckbox.renderers.markdown_renderer import render as render_md
 
-                return render_md(candidate)
+                # src_path lets relative links in the README resolve against its
+                # own directory (as if opened via /view).
+                src_path = str(candidate.relative_to(root))
+                return render_md(candidate, src_path=src_path)
             except Exception:  # noqa: BLE001
                 return None
     return None
