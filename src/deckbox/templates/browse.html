@@ -48,3 +48,14 @@
     </section>
   {% endif %}
 {% endblock %}
+
+{% block scripts %}
+  {# The README is rendered by the markdown renderer, which emits the md-viewer
+     shell (Rendered|Source toggle + copy) and a frontmatter card. Load the same
+     scripts the /view markdown page uses so those controls work here too. #}
+  {% if readme_html %}
+    <script src="/static/js/vendor/json-viewer.js" defer></script>
+    <script src="/static/js/frontmatter.js" defer></script>
+    <script src="/static/js/markdown.js" defer></script>
+  {% endif %}
+{% endblock %}

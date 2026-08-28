@@ -59,6 +59,12 @@ def _render_fence(tokens, idx, options, env):
 
 def _make_md() -> MarkdownIt:
     md = MarkdownIt("gfm-like", {"html": False, "linkify": True, "typographer": False})
+    # linkify treats a bare word ending in a real TLD as a link, and `.md`
+    # (Moldova) / `.sh` / `.py` are real TLDs — so `smart-tools.md` would become
+    # <a href="http://smart-tools.md">. Turn OFF fuzzy link detection so only
+    # explicit http(s):// / www. / emails autolink, not filenames.
+    if md.linkify is not None:
+        md.linkify.set({"fuzzy_link": False, "fuzzy_email": False})
     md.use(footnote_plugin)
     md.use(deflist_plugin)
     md.use(admon_plugin)
