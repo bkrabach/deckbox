@@ -286,16 +286,40 @@ def update(args: argparse.Namespace) -> int:
     except OSError as exc:
         print(f"error: could not run uv: {exc}", file=sys.stderr)
         return 1
-    if result.returncode == 0:
+    if result.returncode != 0:
+        return result.returncode
+
+    print(f"{_GREEN}✓{_RESET} deckbox is up to date.")
+    if not args.reinstall:
         print(
-            f"{_GREEN}✓{_RESET} deckbox is up to date. Restart any running server/service to apply."
+            f"{_DIM}  (If it says nothing changed but you expect the latest, "
+            f"try: deckbox update --reinstall){_RESET}"
         )
-        if not args.reinstall:
+
+    # Pick up the new code automatically: if an installed service is running,
+    # restart it so the user doesn't have to. `--no-restart` opts out.
+    from deckbox import service
+
+    if getattr(args, "no_restart", False):
+        if service.is_installed() and service.is_active():
             print(
-                f"{_DIM}  (If it says nothing changed but you expect the latest, "
-                f"try: deckbox update --reinstall){_RESET}"
+                f"{_DIM}  (service left running on old code; restart with: deckbox service restart){_RESET}"
             )
-    return result.returncode
+        return 0
+
+    if not service.is_installed():
+        return 0
+    if not service.is_active():
+        print(f"{_DIM}·{_RESET} service installed but not running — nothing to restart.")
+        return 0
+    try:
+        service.restart()
+        print(f"{_GREEN}✓{_RESET} restarted the deckbox service (now on the latest code).")
+    except RuntimeError as exc:
+        print(f"{_YELLOW}warning:{_RESET} update applied but service restart failed: {exc}")
+        print("  restart it yourself with: deckbox service restart", file=sys.stderr)
+        return 1
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -347,6 +371,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--reinstall",
         action="store_true",
         help="Force a clean reinstall from GitHub (use if 'upgrade' reports no change)",
+    )
+    update_p.add_argument(
+        "--no-restart",
+        action="store_true",
+        help="Don't restart a running deckbox service after updating",
     )
 
     return parser
