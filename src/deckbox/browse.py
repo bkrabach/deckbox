@@ -99,8 +99,9 @@ def list_directory(root: Path, target: Path) -> Listing:
         raw = []
 
     for child in raw:
-        if child.name.startswith("."):
-            continue  # hide dotfiles by default
+        # Show everything, including dotfiles/dotfolders (.gitignore,
+        # .amplifier/settings.yaml, etc.) — those are frequently the files that
+        # matter. iterdir() already excludes the . and .. entries.
         try:
             st = child.stat()
         except (OSError, ValueError):
