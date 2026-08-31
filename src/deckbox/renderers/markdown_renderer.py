@@ -15,8 +15,10 @@ import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+import nh3
 import yaml
 from markdown_it import MarkdownIt
+from markdown_it.token import Token
 from mdit_py_plugins.admon import admon_plugin
 from mdit_py_plugins.anchors import anchors_plugin
 from mdit_py_plugins.deflist import deflist_plugin
@@ -57,8 +59,70 @@ def _render_fence(tokens, idx, options, env):
     return f'<div class="highlight"><pre><code{cls}>{esc}</code></pre></div>\n'
 
 
+# GitHub alerts: a blockquote whose first line is exactly [!NOTE] / [!TIP] /
+# [!IMPORTANT] / [!WARNING] / [!CAUTION] renders as a coloured callout.
+_ALERT_RE = re.compile(r"^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$", re.IGNORECASE)
+
+
+def _github_alerts_plugin(md: MarkdownIt) -> None:
+    """Transform GitHub-style alert blockquotes into styled `<div>` callouts.
+
+    Runs as a core rule after block parsing: a `blockquote_open` whose first
+    paragraph begins with an alert marker (`[!NOTE]`, …) becomes
+    `<div class="markdown-alert markdown-alert-note">` with a title row, and the
+    marker text is stripped from the body.
+    """
+
+    def rule(state) -> None:  # noqa: ANN001
+        tokens = state.tokens
+        i = 0
+        while i < len(tokens):
+            tok = tokens[i]
+            if (
+                tok.type == "blockquote_open"
+                and i + 2 < len(tokens)
+                and tokens[i + 1].type == "paragraph_open"
+                and tokens[i + 2].type == "inline"
+            ):
+                inline = tokens[i + 2]
+                kids = inline.children or []
+                m = _ALERT_RE.match(kids[0].content) if kids and kids[0].type == "text" else None
+                if m:
+                    kind = m.group(1).upper()
+                    lower = kind.lower()
+                    # Retag the blockquote (and its matching close) as an alert div.
+                    tok.tag = "div"
+                    tok.attrSet("class", f"markdown-alert markdown-alert-{lower}")
+                    depth = 0
+                    for j in range(i, len(tokens)):
+                        if tokens[j].type == "blockquote_open":
+                            depth += 1
+                        elif tokens[j].type == "blockquote_close":
+                            depth -= 1
+                            if depth == 0:
+                                tokens[j].tag = "div"
+                                break
+                    # Drop the "[!NOTE]" marker text and the softbreak after it.
+                    del kids[0]
+                    if kids and kids[0].type == "softbreak":
+                        del kids[0]
+                    # Inject a title row just inside the alert div.
+                    title = Token("html_block", "", 0)
+                    title.content = (
+                        f'<p class="markdown-alert-title">{kind.capitalize()}</p>'
+                    )
+                    tokens.insert(i + 1, title)
+            i += 1
+
+    md.core.ruler.push("github_alerts", rule)
+
+
 def _make_md() -> MarkdownIt:
-    md = MarkdownIt("gfm-like", {"html": False, "linkify": True, "typographer": False})
+    # html=True renders raw inline/block HTML the way GitHub does (centered
+    # <h1>/<p align>, <img> badges, <details>, etc.). The rendered body is then
+    # run through nh3 (Rust/ammonia) sanitisation before display, so <script>,
+    # event handlers, and javascript: URLs never reach the page — see _sanitize.
+    md = MarkdownIt("gfm-like", {"html": True, "linkify": True, "typographer": False})
     # linkify treats a bare word ending in a real TLD as a link, and `.md`
     # (Moldova) / `.sh` / `.py` are real TLDs — so `smart-tools.md` would become
     # <a href="http://smart-tools.md">. Turn OFF fuzzy link detection so only
@@ -69,6 +133,7 @@ def _make_md() -> MarkdownIt:
     md.use(deflist_plugin)
     md.use(admon_plugin)
     md.use(tasklists_plugin, enabled=True, label=True)
+    md.use(_github_alerts_plugin)
     # Heading anchors with a hover-revealed pilcrow permalink (styled via CSS).
     md.use(
         anchors_plugin,
@@ -84,6 +149,55 @@ def _make_md() -> MarkdownIt:
 
 # One shared parser (markdown-it-py instances are reusable and stateless).
 _MD = _make_md()
+
+
+# ---- HTML sanitisation (GitHub-like) --------------------------------------
+# Rendered markdown may contain raw HTML (html=True). Before it reaches the
+# page it is sanitised with nh3 (Rust/ammonia): script/style/iframe/object,
+# event handlers (on*), and javascript:/data: URLs are stripped, while the
+# tags GitHub allows in a README — including the ones our own pipeline emits
+# (pygments `<span class>`, heading anchors, task-list checkboxes) — survive.
+_ALLOWED_TAGS = {
+    # headings / text structure
+    "h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "span", "br", "hr",
+    "blockquote", "pre", "code", "kbd", "samp", "var",
+    # lists / definition lists
+    "ul", "ol", "li", "dl", "dt", "dd",
+    # inline emphasis
+    "a", "b", "i", "strong", "em", "s", "del", "ins", "sub", "sup", "mark",
+    "small", "abbr", "cite", "q", "u",
+    # media / figures
+    "img", "picture", "source", "figure", "figcaption",
+    # tables
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
+    # disclosure + task-list inputs
+    "details", "summary", "input",
+}
+# Attributes: a generous-but-safe set. `align` powers GitHub's centred headers;
+# `class`/`id` keep pygments highlighting, heading anchors, and callouts styled.
+_ALLOWED_ATTRS = {
+    "*": {"align", "class", "id", "title", "dir", "lang", "role"},
+    "a": {"href", "name", "target"},  # nh3 adds `rel` itself via link_rel
+    "img": {"src", "alt", "width", "height", "loading", "decoding", "srcset", "sizes"},
+    "source": {"src", "srcset", "sizes", "media", "type"},
+    "ol": {"start", "type"},
+    "td": {"colspan", "rowspan"},
+    "th": {"colspan", "rowspan", "scope"},
+    "col": {"span"},
+    "colgroup": {"span"},
+    "input": {"type", "checked", "disabled"},
+}
+_ALLOWED_URL_SCHEMES = {"http", "https", "mailto", "tel"}
+
+
+def _sanitize(html_body: str) -> str:
+    return nh3.clean(
+        html_body,
+        tags=_ALLOWED_TAGS,
+        attributes=_ALLOWED_ATTRS,
+        url_schemes=_ALLOWED_URL_SCHEMES,
+        link_rel="noopener noreferrer nofollow",
+    )
 
 
 # Leading YAML frontmatter: --- ... --- (or the ... terminator) at the very top.
@@ -223,6 +337,9 @@ def render(path: Path, *, src_path: str = "") -> str:
     frontmatter, body_text = _split_frontmatter(text)
     body = _MD.render(body_text)
     body = _rewrite_relative_links(body, src_path)
+    # Sanitise AFTER rewriting so the /view and /raw relative URLs are preserved;
+    # strips any script/style/on*/javascript: that raw HTML (html=True) let in.
+    body = _sanitize(body)
     fm_html = _render_frontmatter(frontmatter) if frontmatter else ""
     rendered = f'<article class="markdown-body">{fm_html}{body}</article>'
     # Wrap in a viewer shell with a Rendered | Source toggle and a copy button,

@@ -430,6 +430,58 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
 .markdown-body .admonition.danger, .markdown-body .admonition.error { border-left-color: #e5484d; }
 .markdown-body .admonition.tip, .markdown-body .admonition.success { border-left-color: #12a594; }
 
+/* GitHub-style alerts: > [!NOTE] / [!TIP] / [!IMPORTANT] / [!WARNING] / [!CAUTION] */
+.markdown-body .markdown-alert {
+  --alert: var(--accent);
+  margin: 1.1em 0; padding: 8px 16px; border-radius: var(--radius-sm);
+  border-left: 4px solid var(--alert); background: var(--surface-2);
+  color: var(--text);
+}
+.markdown-body .markdown-alert > :first-child { margin-top: 0; }
+.markdown-body .markdown-alert > :last-child { margin-bottom: 0; }
+.markdown-body .markdown-alert-title {
+  display: flex; align-items: center; gap: 7px;
+  margin: 0 0 .4em; font-weight: 640; font-size: .92em; line-height: 1;
+  color: var(--alert); letter-spacing: -.01em;
+}
+/* Leading icon per kind (inline SVG, tinted via the alert colour). */
+.markdown-body .markdown-alert-title::before {
+  content: ""; width: 16px; height: 16px; flex: none;
+  background: currentColor; -webkit-mask: var(--alert-ic) center/16px no-repeat; mask: var(--alert-ic) center/16px no-repeat;
+}
+.markdown-body .markdown-alert-note {
+  --alert: #0969da;
+  --alert-ic: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM7 7h2v5H7V7Zm0-3h2v2H7V4Z"/></svg>');
+}
+.markdown-body .markdown-alert-tip {
+  --alert: #1a7f37;
+  --alert-ic: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 1.5A4.5 4.5 0 0 0 5 9.4V11h6V9.4A4.5 4.5 0 0 0 8 1.5ZM6 12h4v1H6v-1Zm.5 2h3l-.5 1H7l-.5-1Z"/></svg>');
+}
+.markdown-body .markdown-alert-important {
+  --alert: #8250df;
+  --alert-ic: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 2h12v9H5l-3 3V2Zm5 2h2v4H7V4Zm0 5h2v2H7V9Z"/></svg>');
+}
+.markdown-body .markdown-alert-warning {
+  --alert: #9a6700;
+  --alert-ic: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 1.5 15 14H1L8 1.5ZM7 6h2v4H7V6Zm0 5h2v2H7v-2Z"/></svg>');
+}
+.markdown-body .markdown-alert-caution {
+  --alert: #cf222e;
+  --alert-ic: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM7 4h2v5H7V4Zm0 6h2v2H7v-2Z"/></svg>');
+}
+/* Brighter alert accents in dark mode for contrast against the dark surface. */
+[data-theme="dark"] .markdown-body .markdown-alert-note { --alert: #4493f8; }
+[data-theme="dark"] .markdown-body .markdown-alert-tip { --alert: #3fb950; }
+[data-theme="dark"] .markdown-body .markdown-alert-important { --alert: #ab7df8; }
+[data-theme="dark"] .markdown-body .markdown-alert-warning { --alert: #d29922; }
+[data-theme="dark"] .markdown-body .markdown-alert-caution { --alert: #f85149; }
+
+/* Raw-HTML READMEs: honour legacy align="center" and keep centred badge rows tidy. */
+.markdown-body [align="center"] { text-align: center; }
+.markdown-body [align="right"] { text-align: right; }
+.markdown-body p[align="center"] a, .markdown-body p[align="center"] img { display: inline-block; vertical-align: middle; }
+.markdown-body p[align="center"] img { margin: 2px; }
+
 /* Markdown viewer shell — Rendered | Source toggle + copy (parity with DOT/JSONL) */
 .md-viewer { display: flex; flex-direction: column; }
 .md-toolbar {
