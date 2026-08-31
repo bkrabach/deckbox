@@ -6,13 +6,25 @@ import mimetypes
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from deckbox import __version__
 from deckbox.auth import PamAuthMiddleware, launch_user
-from deckbox.browse import PathOutsideRoot, build_crumbs, list_directory, safe_resolve
+from deckbox.browse import (
+    PathOutsideRoot,
+    build_crumbs,
+    list_directory,
+    safe_resolve,
+    url_path,
+)
 from deckbox.config import ResolvedConfig
 from deckbox.renderers import (
     MAX_INLINE_BYTES,
@@ -32,6 +44,7 @@ _HIGHLIGHT_CSS = pygments_css()
 
 def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
     root = cfg.directory.resolve()
+    allow_outside = cfg.allow_outside_root
     app = FastAPI(title="Deckbox", version=__version__)
     app.state.launch_user = launch_user()
     app.state.auth_required = auth_required
@@ -40,7 +53,7 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
 
     def resolve_or_404(path: str) -> Path:
         try:
-            target = safe_resolve(root, path)
+            target = safe_resolve(root, path, allow_outside=allow_outside)
         except PathOutsideRoot as exc:
             raise HTTPException(status_code=404, detail="Not found") from exc
         if not target.exists():
@@ -53,10 +66,11 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
             "app_name": "Deckbox",
             "version": __version__,
             "root_name": root.name or str(root),
+            "allow_outside_root": allow_outside,
+            "home_hint": str(root),
         }
 
-    def render_view(request: Request, path: str) -> HTMLResponse:
-        target = resolve_or_404(path)
+    def render_view(request: Request, target: Path, path: str) -> HTMLResponse:
         if target.is_dir():
             return _render_dir(request, root, target)
         return _render_file(request, base_ctx(request), root, target, path)
@@ -143,11 +157,25 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request) -> HTMLResponse:
-        return render_view(request, "")
+        # Home always serves the launch root, whatever its absolute path.
+        return render_view(request, root, url_path(root))
 
     @app.get("/view/{path:path}", response_class=HTMLResponse)
     async def view(request: Request, path: str) -> HTMLResponse:
-        return render_view(request, path)
+        return render_view(request, resolve_or_404(path), path)
+
+    @app.get("/goto", response_class=HTMLResponse)
+    async def goto(request: Request, path: str = "") -> Response:
+        # The "Go to path" box submits an absolute (or ~) filesystem path.
+        raw = (path or "").strip()
+        if not raw:
+            return RedirectResponse("/", status_code=303)
+        expanded = Path(raw).expanduser()
+        if not expanded.is_absolute():
+            # Interpret a relative entry against the launch root.
+            expanded = root / expanded
+        target = resolve_or_404(url_path(expanded))
+        return RedirectResponse(f"/view/{url_path(target)}", status_code=303)
 
     @app.get("/raw/{path:path}")
     async def raw(path: str) -> FileResponse:
@@ -191,20 +219,21 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
     ) -> HTMLResponse:
         kind = file_kind(target)
         mode = mode_for(kind)
-        rel = str(target.relative_to(root))
+        rel = url_path(target)
+        parent_rel = url_path(target.parent)
         size = target.stat().st_size
         ctx.update(
             {
                 "title": target.name,
-                "crumbs": build_crumbs(rel),
+                "crumbs": build_crumbs(target, root),
                 "kind": kind,
                 "width_default": default_width(kind),
                 "mode": mode,
                 "rel": rel,
-                "parent_rel": str(Path(rel).parent) if Path(rel).parent != Path(".") else "",
+                "parent_rel": parent_rel,
                 "size": size,
-                "raw_url": f"/raw/{path}",
-                "download_url": f"/download/{path}",
+                "raw_url": f"/raw/{rel}",
+                "download_url": f"/download/{rel}",
                 "content_html": None,
                 "render_error": None,
             }
@@ -218,7 +247,7 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
                 ctx["render_error"] = "File is too large to preview."
             else:
                 try:
-                    ctx["content_html"] = render_inline(target, kind, src_path=path)
+                    ctx["content_html"] = render_inline(target, kind, src_path=rel)
                 except Exception as exc:  # noqa: BLE001 - surface any renderer failure
                     ctx["mode"] = "download"
                     ctx["render_error"] = f"Could not render this file: {exc}"
@@ -233,12 +262,13 @@ def _maybe_readme(directory: Path, root: Path) -> str | None:
         candidate = directory / name
         if candidate.is_file():
             try:
+                from deckbox.browse import url_path
                 from deckbox.renderers.markdown_renderer import render as render_md
 
                 # src_path lets relative links in the README resolve against its
-                # own directory (as if opened via /view).
-                src_path = str(candidate.relative_to(root))
-                return render_md(candidate, src_path=src_path)
+                # own directory (as if opened via /view). Absolute (slash-stripped)
+                # so it works whether or not the README is under the launch root.
+                return render_md(candidate, src_path=url_path(candidate))
             except Exception:  # noqa: BLE001
                 return None
     return None

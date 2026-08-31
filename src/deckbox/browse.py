@@ -14,13 +14,29 @@ class PathOutsideRoot(Exception):
     """Raised when a requested path escapes the served root."""
 
 
-def safe_resolve(root: Path, rel: str) -> Path:
-    """Resolve ``rel`` under ``root``, refusing any escape via .. or symlinks."""
+def url_path(p: Path) -> str:
+    """The /view URL segment for a filesystem path: absolute, leading slash
+    stripped. e.g. Path('/home/u/notes') -> 'home/u/notes'. The route prepends
+    the slash back. The empty string denotes filesystem root '/'."""
+    return str(Path(p).resolve()).lstrip("/")
+
+
+def safe_resolve(root: Path, path: str, *, allow_outside: bool = False) -> Path:
+    """Resolve a /view URL path segment to an absolute filesystem path.
+
+    ``path`` is an absolute filesystem path with the leading slash removed (see
+    ``url_path``); the empty string means filesystem root '/'. When
+    ``allow_outside`` is False the result must be the served root or a descendant
+    of it, else PathOutsideRoot — and ``.resolve()`` collapses any '..' and
+    follows symlinks first, so neither can be used to escape.
+    """
     root = root.resolve()
-    candidate = (root / rel.lstrip("/")).resolve()
-    if candidate != root and root not in candidate.parents:
-        raise PathOutsideRoot(rel)
-    return candidate
+    candidate = Path("/" + path.lstrip("/")).resolve()
+    if allow_outside:
+        return candidate
+    if candidate == root or root in candidate.parents:
+        return candidate
+    raise PathOutsideRoot(path)
 
 
 @dataclass
@@ -79,19 +95,38 @@ def human_size(num: int) -> str:
     return f"{size:.1f} TB"
 
 
-def build_crumbs(rel: str) -> list[Crumb]:
-    crumbs = [Crumb(name="Home", rel="")]
-    parts = [p for p in rel.strip("/").split("/") if p]
-    acc = ""
+def build_crumbs(target: Path, root: Path) -> list[Crumb]:
+    """Breadcrumbs from Home (the served root) to ``target``.
+
+    Home always links to the launch root (its ``rel`` is "" and the template
+    maps that to "/"). Within the root, the remaining crumbs are the path
+    components relative to root. Outside the root (only reachable when
+    allow_outside_root is on), they are the absolute path components so every
+    ancestor is clickable. Each crumb ``rel`` is a /view URL segment.
+    """
+    target = target.resolve()
+    root = root.resolve()
+    crumbs = [Crumb(name="Home", rel="")]  # template maps "" -> "/"
+    try:
+        parts = target.relative_to(root).parts
+        acc = root
+    except ValueError:
+        # target is not under root — build an absolute breadcrumb from '/'.
+        acc = Path("/")
+        for part in target.parts[1:]:
+            acc = acc / part
+            crumbs.append(Crumb(name=part, rel=url_path(acc)))
+        return crumbs
     for part in parts:
-        acc = f"{acc}/{part}" if acc else part
-        crumbs.append(Crumb(name=part, rel=acc))
+        acc = acc / part
+        crumbs.append(Crumb(name=part, rel=url_path(acc)))
     return crumbs
 
 
 def list_directory(root: Path, target: Path) -> Listing:
     """Build a sorted listing (directories first, then files, name-insensitive)."""
-    rel = "" if target == root.resolve() else str(target.relative_to(root.resolve()))
+    root = root.resolve()
+    target = target.resolve()
     entries: list[Entry] = []
     try:
         raw = list(target.iterdir())
@@ -107,11 +142,10 @@ def list_directory(root: Path, target: Path) -> Listing:
         except (OSError, ValueError):
             continue
         is_dir = stat.S_ISDIR(st.st_mode)
-        child_rel = f"{rel}/{child.name}" if rel else child.name
         entries.append(
             Entry(
                 name=child.name,
-                rel=child_rel,
+                rel=url_path(target / child.name),
                 is_dir=is_dir,
                 kind="folder" if is_dir else file_kind(child),
                 size=0 if is_dir else st.st_size,
@@ -120,4 +154,4 @@ def list_directory(root: Path, target: Path) -> Listing:
         )
 
     entries.sort(key=lambda e: (not e.is_dir, e.name.lower()))
-    return Listing(rel=rel, crumbs=build_crumbs(rel), entries=entries)
+    return Listing(rel=url_path(target), crumbs=build_crumbs(target, root), entries=entries)

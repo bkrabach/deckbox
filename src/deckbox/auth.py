@@ -1,12 +1,16 @@
 """Authentication for Deckbox.
 
 Policy:
-  * Requests from localhost (127.0.0.1 / ::1) are never challenged.
-  * Any other client must authenticate with HTTP Basic auth, and the
-    username MUST be the OS user that launched the server, verified via PAM.
+  * EVERY request must authenticate with HTTP Basic auth (except /health),
+    and the username MUST be the OS user that launched the server, verified
+    via PAM. There is NO localhost bypass.
 
-The client IP is taken from the socket (``request.client.host``), which is
-unforgeable — unlike the Host or X-Forwarded-For headers.
+Why no localhost bypass: a socket peer of 127.0.0.1 does NOT prove the caller
+is genuinely local. Any userspace proxy — `ssh -L`, socat, a container port
+forward — re-originates the connection so the peer address is 127.0.0.1 for a
+truly *remote* caller too. muxplex shipped a security advisory
+(GHSA-7c6r-fvrh-9qp4) over exactly this trust-the-loopback-peer mistake; we
+don't repeat it. Use --no-auth to opt out for genuinely trusted local use.
 """
 
 from __future__ import annotations
@@ -22,7 +26,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-_LOCALHOST_ADDRS = {"127.0.0.1", "::1"}
 _REALM = "Deckbox"
 # Paths reachable without auth even from remote clients.
 _PUBLIC_PATHS = frozenset({"/health"})
@@ -58,16 +61,14 @@ def _pam_authenticate(username: str, password: str) -> bool:
 
 
 class PamAuthMiddleware(BaseHTTPMiddleware):
-    """Challenge non-localhost requests with PAM-backed Basic auth."""
+    """Challenge every request with PAM-backed Basic auth (no localhost bypass)."""
 
     async def dispatch(self, request: Request, call_next):
         if not getattr(request.app.state, "auth_required", False):
             return await call_next(request)
 
-        client_host = request.client.host if request.client else ""
-        if client_host in _LOCALHOST_ADDRS:
-            return await call_next(request)
-
+        # No localhost bypass — a 127.0.0.1 socket peer does not prove the
+        # caller is local (ssh -L / socat / container forwards re-originate).
         if request.url.path in _PUBLIC_PATHS:
             return await call_next(request)
 

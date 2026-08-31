@@ -17,7 +17,6 @@ import sys
 from deckbox import __version__
 from deckbox.config import DEFAULTS, ResolvedConfig, load_config_file, resolve, save_config_file
 
-_LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 
 _DIM = "\033[2m"
 _BOLD = "\033[1m"
@@ -39,7 +38,16 @@ def _add_run_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--no-auth",
         action="store_true",
-        help="Disable PAM auth even for non-localhost clients (trusted networks only)",
+        help="Disable PAM auth entirely (trusted local use only — every client "
+        "is otherwise required to log in, including localhost)",
+    )
+    parser.add_argument(
+        "--allow-outside-root",
+        action="store_true",
+        default=None,
+        help="Let the 'Go to path' box jump anywhere the launching user can read "
+        "(above/outside the served dir). Off by default; exposes the whole "
+        "filesystem-as-you to anyone who can authenticate.",
     )
 
 
@@ -59,9 +67,10 @@ def _chosen_dir(args: argparse.Namespace) -> str | None:
 
 
 def _auth_required(host: str, no_auth: bool) -> bool:
-    if no_auth:
-        return False
-    return host not in _LOOPBACK
+    # Auth is required for EVERY client, including localhost — a 127.0.0.1 socket
+    # peer does not prove the caller is local (ssh -L / socat / container
+    # forwards re-originate). --no-auth is the only opt-out.
+    return not no_auth
 
 
 def run(args: argparse.Namespace) -> int:
@@ -71,7 +80,11 @@ def run(args: argparse.Namespace) -> int:
     from deckbox.server import create_app
 
     cfg = resolve(
-        directory=_chosen_dir(args), host=args.host, port=args.port, log_level=args.log_level
+        directory=_chosen_dir(args),
+        host=args.host,
+        port=args.port,
+        log_level=args.log_level,
+        allow_outside_root=getattr(args, "allow_outside_root", None),
     )
 
     if not cfg.directory.exists():
@@ -84,8 +97,9 @@ def run(args: argparse.Namespace) -> int:
     _print_banner(cfg, auth_required=auth_required, launcher=launch_user())
     if auth_required and not pam_available():
         print(
-            f"{_YELLOW}warning:{_RESET} PAM is unavailable — remote clients cannot "
-            f"authenticate. Install python-pam or run with --host 127.0.0.1.",
+            f"{_YELLOW}warning:{_RESET} PAM is unavailable — NO client can "
+            f"authenticate, so every request will be rejected. Install python-pam, "
+            f"or use --no-auth for trusted local use.",
             file=sys.stderr,
         )
 
@@ -96,9 +110,9 @@ def run(args: argparse.Namespace) -> int:
 def _print_banner(cfg: ResolvedConfig, *, auth_required: bool, launcher: str) -> None:
     shown_host = "localhost" if cfg.host in ("127.0.0.1", "::1") else cfg.host
     auth = (
-        f"PAM (user {_BOLD}{launcher}{_RESET}) for non-localhost"
+        f"PAM (user {_BOLD}{launcher}{_RESET}) — required for all clients"
         if auth_required
-        else "none (localhost-only or --no-auth)"
+        else "none (--no-auth)"
     )
     print(f"\n{_BOLD}Deckbox{_RESET} {_DIM}{__version__}{_RESET}")
     print(f"  serving : {cfg.directory}")
@@ -147,7 +161,11 @@ def service_cmd(args: argparse.Namespace) -> int:
     try:
         if action == "install":
             cfg = resolve(
-                directory=args.dir, host=args.host, port=args.port, log_level=args.log_level
+                directory=args.dir,
+                host=args.host,
+                port=args.port,
+                log_level=args.log_level,
+                allow_outside_root=getattr(args, "allow_outside_root", None),
             )
             if not cfg.directory.exists():
                 print(f"error: directory does not exist: {cfg.directory}", file=sys.stderr)

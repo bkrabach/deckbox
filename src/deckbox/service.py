@@ -43,6 +43,10 @@ def _unit_text(cfg: ResolvedConfig) -> str:
         "--log-level",
         cfg.log_level,
     ]
+    # Bake install-time config into ExecStart as explicit args (systemd does not
+    # propagate the installing shell's environment reliably).
+    if cfg.allow_outside_root:
+        exec_cmd.append("--allow-outside-root")
     exec_start = " ".join(_shlex_quote(part) for part in exec_cmd)
     path_env = os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
     return f"""[Unit]
@@ -80,6 +84,7 @@ def install(cfg: ResolvedConfig, *, enable_linger: bool = True) -> Path:
             "host": cfg.host,
             "port": cfg.port,
             "log_level": cfg.log_level,
+            "allow_outside_root": cfg.allow_outside_root,
         }
     )
     USER_UNIT_DIR.mkdir(parents=True, exist_ok=True)

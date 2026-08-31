@@ -30,6 +30,11 @@ DEFAULTS: dict = {
     "host": "0.0.0.0",
     "port": 8000,
     "log_level": "info",
+    # When False, browsing is confined to the served directory. When True, the
+    # "Go to path" box can jump anywhere the launching user can read (above the
+    # root, elsewhere on the machine). Off by default — turning it on exposes the
+    # whole filesystem-as-you to anyone who can authenticate.
+    "allow_outside_root": False,
 }
 
 _ENV_KEYS = {
@@ -37,6 +42,7 @@ _ENV_KEYS = {
     "host": "DECKBOX_HOST",
     "port": "DECKBOX_PORT",
     "log_level": "DECKBOX_LOG_LEVEL",
+    "allow_outside_root": "DECKBOX_ALLOW_OUTSIDE_ROOT",
 }
 
 
@@ -48,10 +54,17 @@ class ResolvedConfig:
     host: str
     port: int
     log_level: str
+    allow_outside_root: bool = False
 
     @property
     def dir_display(self) -> str:
         return str(self.directory)
+
+
+def _coerce_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
 def load_config_file() -> dict:
@@ -106,6 +119,7 @@ def resolve(
     host: str | None = None,
     port: int | None = None,
     log_level: str | None = None,
+    allow_outside_root: bool | None = None,
 ) -> ResolvedConfig:
     """Resolve all settings. Explicit (non-None) args are CLI-flag overrides."""
     raw_dir = _pick("dir", directory)
@@ -122,4 +136,5 @@ def resolve(
         host=str(_pick("host", host)),
         port=resolved_port,
         log_level=str(_pick("log_level", log_level)),
+        allow_outside_root=_coerce_bool(_pick("allow_outside_root", allow_outside_root)),
     )
