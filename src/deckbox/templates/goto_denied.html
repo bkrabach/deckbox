@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="download-card">
+    <span class="download-icon kind-folder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v5M9.5 12.5h5"/></svg>
+    </span>
+    <p class="download-msg"><strong>{{ notice_title }}</strong></p>
+    <p class="download-msg">
+      <code>{{ notice_path }}</code> is not inside the served folder
+      (<code>{{ notice_root }}</code>), and browsing outside it is turned off.
+    </p>
+    <p class="download-msg">
+      To browse anywhere on the machine, restart Deckbox with
+      <code>--allow-outside-root</code>, or set it once with
+      <code>deckbox config set allow_outside_root true</code> (then restart the
+      server / service).
+    </p>
+    <a class="btn btn-primary" href="/">Back to Home</a>
+  </section>
+{% endblock %}

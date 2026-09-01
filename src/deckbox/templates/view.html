@@ -26,14 +26,24 @@
         {% if kind == "html" %}
           <a class="btn" href="{{ raw_url }}" target="_blank" rel="noopener">Open ↗</a>
         {% endif %}
+        {% set rich = kind in ["markdown", "docx", "html"] %}
+        {% if rich %}
+          <button type="button" class="icon-act icon-act--primary" data-copy-rich
+            {% if kind == "html" %}data-rich-url="{{ raw_url }}"{% else %}data-rich-selector=".markdown-body"{% endif %}
+            title="Copy as rich text" aria-label="Copy as rich text">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M9 12h6M9 15.5h6M9 9h3"/></svg>
+          </button>
+        {% endif %}
         {% if mode != "image" %}
-          <button type="button" class="btn btn-ghost" data-copy-raw="{{ raw_url }}">
-            <svg class="btn-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
-            <span class="btn-label">Copy</span>
+          <button type="button" class="icon-act" data-copy-raw="{{ raw_url }}"
+            title="Copy raw source" aria-label="Copy raw source">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/></svg>
           </button>
         {% endif %}
         <a class="btn btn-ghost" href="{{ raw_url }}" target="_blank" rel="noopener">Raw</a>
-        <a class="btn btn-primary" href="{{ download_url }}">Download</a>
+        <a class="icon-act" href="{{ download_url }}" title="Download" aria-label="Download" download>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M5 20h14"/></svg>
+        </a>
       </div>
     </div>
 

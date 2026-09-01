@@ -174,6 +174,25 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
         if not expanded.is_absolute():
             # Interpret a relative entry against the launch root.
             expanded = root / expanded
+        resolved = expanded.resolve()
+        outside = not (resolved == root or root in resolved.parents)
+        # Give a specific, actionable message when a real path is refused only
+        # because it's outside the served root and out-of-root browsing is off —
+        # a bare "Not found" is confusing for a path that plainly exists.
+        if outside and not allow_outside and resolved.exists():
+            ctx = base_ctx(request)
+            ctx.update(
+                {
+                    "title": "Outside the served folder",
+                    "crumbs": [],
+                    "notice_title": "That path is outside the served folder",
+                    "notice_path": str(resolved),
+                    "notice_root": str(root),
+                }
+            )
+            return _TEMPLATES.TemplateResponse(
+                request=request, name="goto_denied.html", context=ctx, status_code=404
+            )
         target = resolve_or_404(url_path(expanded))
         return RedirectResponse(f"/view/{url_path(target)}", status_code=303)
 

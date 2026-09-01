@@ -101,21 +101,68 @@
 
     filter.addEventListener("input", applyFilter);
     filter.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") { filter.value = ""; applyFilter(); filter.blur(); }
+      // Escape (clear + collapse) is handled by the collapsible module below.
       if (e.key === "Enter") {
         var first = entries.find(function (el) { return !el.hidden; });
         if (first) { var a = first.querySelector("a"); if (a) a.click(); }
       }
     });
 
-    // "/" focuses the filter (unless already typing in a field).
+    // "/" opens + focuses the filter (unless already typing in a field).
+    var filterWrap = filter.closest("[data-collapsible]");
     document.addEventListener("keydown", function (e) {
       if (e.key === "/" && document.activeElement !== filter) {
         var tag = (document.activeElement && document.activeElement.tagName) || "";
-        if (tag !== "INPUT" && tag !== "TEXTAREA") { e.preventDefault(); filter.focus(); }
+        if (tag !== "INPUT" && tag !== "TEXTAREA") {
+          e.preventDefault();
+          if (filterWrap) filterWrap.classList.add("is-open");
+          filter.focus();
+        }
       }
     });
   }
+
+  // ---- Collapsible topbar inputs (filter, go-to) --------------------------
+  // Icon-only until the toggle is clicked; the input then expands and takes
+  // focus. Collapses again on blur when empty — a value keeps it open so the
+  // active filter / typed path stays visible.
+  Array.prototype.forEach.call(document.querySelectorAll("[data-collapsible]"), function (wrap) {
+    var toggle = wrap.querySelector("[data-collapse-toggle]");
+    var input = wrap.querySelector("[data-collapse-input]");
+    if (!toggle || !input) return;
+
+    function openInput() {
+      wrap.classList.add("is-open");
+      toggle.setAttribute("aria-expanded", "true");
+      input.focus();
+    }
+    function collapseIfEmpty() {
+      if (input.value.trim() !== "") return;
+      wrap.classList.remove("is-open");
+      toggle.setAttribute("aria-expanded", "false");
+    }
+
+    toggle.addEventListener("click", function () {
+      if (wrap.classList.contains("is-open")) {
+        if (input.value.trim() === "") collapseIfEmpty();
+        else input.focus();
+      } else {
+        openInput();
+      }
+    });
+    // Defer so clicking the toggle (which blurs the input first) doesn't
+    // collapse-then-reopen.
+    input.addEventListener("blur", function () { setTimeout(collapseIfEmpty, 120); });
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        input.value = "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        wrap.classList.remove("is-open");
+        toggle.setAttribute("aria-expanded", "false");
+        toggle.focus();
+      }
+    });
+  });
 
   // ---- Content width toggle (file view) -----------------------------------
   var fileview = document.querySelector(".fileview[data-width]");
@@ -140,54 +187,101 @@
     applyWidth(fileview.getAttribute("data-width") || "readable");
   }
 
-  // ---- Copy raw contents to clipboard -------------------------------------
-  var copyBtn = document.querySelector("[data-copy-raw]");
-  if (copyBtn) {
-    var labelEl = copyBtn.querySelector(".btn-label");
-    var defaultLabel = labelEl ? labelEl.textContent : "Copy";
-    var resetTimer = null;
-
-    function flash(text, ok) {
-      if (labelEl) labelEl.textContent = text;
-      copyBtn.classList.toggle("is-copied", ok === true);
-      copyBtn.classList.toggle("is-error", ok === false);
-      if (resetTimer) clearTimeout(resetTimer);
-      resetTimer = setTimeout(function () {
-        if (labelEl) labelEl.textContent = defaultLabel;
-        copyBtn.classList.remove("is-copied", "is-error");
-      }, 1600);
+  // ---- File-view copy actions: raw source + rich (formatted) text ---------
+  function flashAct(btn, text, ok) {
+    btn.setAttribute("data-flash", text);
+    btn.classList.toggle("is-copied", ok === true);
+    btn.classList.toggle("is-error", ok === false);
+    // Legacy text buttons (with a .btn-label) still get their label swapped.
+    var label = btn.querySelector(".btn-label");
+    if (label) {
+      if (btn._prevLabel == null) btn._prevLabel = label.textContent;
+      label.textContent = text;
     }
+    if (btn._flashT) clearTimeout(btn._flashT);
+    btn._flashT = setTimeout(function () {
+      btn.removeAttribute("data-flash");
+      btn.classList.remove("is-copied", "is-error");
+      if (label && btn._prevLabel != null) label.textContent = btn._prevLabel;
+    }, 1600);
+  }
 
-    async function writeClipboard(text) {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        return;
-      }
-      // Fallback for non-secure contexts (plain http over LAN).
+  function writePlain(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (res, rej) {
       var ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.focus(); ta.select();
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
       var ok = false;
       try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
       document.body.removeChild(ta);
-      if (!ok) throw new Error("copy command failed");
-    }
-
-    copyBtn.addEventListener("click", function () {
-      var url = copyBtn.getAttribute("data-copy-raw");
-      fetch(url, { headers: { "Accept": "text/plain" } })
-        .then(function (r) {
-          if (!r.ok) throw new Error("fetch failed");
-          return r.text();
-        })
-        .then(function (text) { return writeClipboard(text); })
-        .then(function () { flash("Copied!", true); })
-        .catch(function () { flash("Failed", false); });
+      ok ? res() : rej(new Error("copy failed"));
     });
   }
+
+  // Rich copy: a real text/html clipboard payload so it pastes formatted into
+  // Docs/Word/email. Falls back to selecting a live contenteditable node and
+  // execCommand for insecure (plain-http over LAN) contexts.
+  function writeRich(htmlStr) {
+    if (navigator.clipboard && window.ClipboardItem && window.isSecureContext) {
+      var tmp = document.createElement("div");
+      tmp.innerHTML = htmlStr;
+      var plain = tmp.innerText || tmp.textContent || "";
+      var item = new ClipboardItem({
+        "text/html": new Blob([htmlStr], { type: "text/html" }),
+        "text/plain": new Blob([plain], { type: "text/plain" }),
+      });
+      return navigator.clipboard.write([item]);
+    }
+    return new Promise(function (res, rej) {
+      var host = document.createElement("div");
+      host.setAttribute("contenteditable", "true");
+      host.style.position = "fixed"; host.style.left = "-9999px"; host.style.opacity = "0";
+      host.innerHTML = htmlStr;
+      document.body.appendChild(host);
+      var range = document.createRange();
+      range.selectNodeContents(host);
+      var sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      sel.removeAllRanges(); document.body.removeChild(host);
+      ok ? res() : rej(new Error("rich copy failed"));
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-copy-raw]"), function (btn) {
+    btn.addEventListener("click", function () {
+      var url = btn.getAttribute("data-copy-raw");
+      fetch(url, { headers: { "Accept": "text/plain" } })
+        .then(function (r) { if (!r.ok) throw new Error("fetch failed"); return r.text(); })
+        .then(function (text) { return writePlain(text); })
+        .then(function () { flashAct(btn, "Copied!", true); })
+        .catch(function () { flashAct(btn, "Failed", false); });
+    });
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-copy-rich]"), function (btn) {
+    btn.addEventListener("click", function () {
+      var selector = btn.getAttribute("data-rich-selector");
+      var url = btn.getAttribute("data-rich-url");
+      var p;
+      if (selector) {
+        var el = document.querySelector(selector);
+        p = el ? writeRich(el.innerHTML) : Promise.reject(new Error("no content"));
+      } else if (url) {
+        p = fetch(url, { headers: { "Accept": "text/html" } })
+          .then(function (r) { if (!r.ok) throw new Error("fetch failed"); return r.text(); })
+          .then(writeRich);
+      } else {
+        p = Promise.reject(new Error("no source"));
+      }
+      p.then(function () { flashAct(btn, "Copied!", true); })
+        .catch(function () { flashAct(btn, "Failed", false); });
+    });
+  });
 
   // ---- Copy button on markdown code blocks (reveal on hover) --------------
   function clipboardWrite(text) {

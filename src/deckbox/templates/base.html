@@ -42,12 +42,15 @@
 
       <div class="topbar-actions">
         {% block topbar_extra %}{% endblock %}
-        <form class="goto-form" action="/goto" method="get" role="search"
+        <form class="goto-form" action="/goto" method="get" role="search" data-collapsible
               title="Jump to a directory path{% if allow_outside_root %} — anywhere on the machine{% else %} within the served folder{% endif %}">
-          <svg class="goto-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M11 13h5M14 10l3 3-3 3"/></svg>
-          <input class="goto-input" type="text" name="path" autocomplete="off" spellcheck="false"
+          <button type="button" class="icon-btn collapse-toggle" aria-label="Go to path" aria-expanded="false" data-collapse-toggle
+                  title="Go to path{% if allow_outside_root %} — anywhere on the machine{% else %} within the served folder{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M11 13h5M14 10l3 3-3 3"/></svg>
+          </button>
+          <input class="goto-input collapse-input" type="text" name="path" autocomplete="off" spellcheck="false"
                  placeholder="{% if allow_outside_root %}Go to path (anywhere)…{% else %}Go to path…{% endif %}"
-                 aria-label="Go to directory path">
+                 aria-label="Go to directory path" data-collapse-input>
         </form>
         <a class="icon-btn home-btn" href="/" title="Home — {{ home_hint }}" aria-label="Home">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9"/><path d="M9.5 20v-5.5h5V20"/></svg>

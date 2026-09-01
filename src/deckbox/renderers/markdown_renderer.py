@@ -353,8 +353,6 @@ def render(path: Path, *, src_path: str = "") -> str:
         '<button type="button" data-md-view="rendered" aria-pressed="true">Rendered</button>'
         '<button type="button" data-md-view="source" aria-pressed="false">Source</button>'
         "</div>"
-        '<span class="md-spacer"></span>'
-        '<button type="button" class="md-copy" data-md-copy>Copy</button>'
         "</div>"
         f'<div class="md-rendered" data-md-rendered>{rendered}</div>'
         f'<pre class="md-source jsonl-rawpre" data-md-source hidden>{source}</pre>'
