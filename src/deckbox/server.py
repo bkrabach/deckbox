@@ -12,6 +12,7 @@ from fastapi.responses import (
     JSONResponse,
     RedirectResponse,
     Response,
+    StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -217,6 +218,51 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
             target,
             media_type="application/octet-stream",
             filename=target.name,
+        )
+
+    @app.post("/download-zip")
+    async def download_zip(request: Request) -> StreamingResponse:
+        """Create one ZIP packet from direct children selected on a listing page."""
+        from deckbox.archive import ArchiveError, iter_zip, plan_archive
+
+        # A browser submits Origin for cross-origin form POSTs. Reject a mismatch
+        # before doing expensive archive work; origin-less CLI/API callers remain
+        # supported and still require Deckbox authentication when it is enabled.
+        origin = request.headers.get("origin")
+        expected_origin = str(request.base_url).rstrip("/")
+        if origin and origin != expected_origin:
+            raise HTTPException(status_code=403, detail="Cross-origin ZIP download rejected")
+
+        form = await request.form()
+        base_raw = form.get("base")
+        paths = [str(value) for value in form.getlist("path") if str(value)]
+        if not isinstance(base_raw, str) or not paths:
+            raise HTTPException(status_code=400, detail="Select at least one file or folder.")
+
+        base = resolve_or_404(base_raw)
+        if not base.is_dir():
+            raise HTTPException(status_code=400, detail="Selection base is not a folder.")
+
+        selected: list[Path] = []
+        for path in paths:
+            target = resolve_or_404(path)
+            # Check browser-submitted paths even though the UI only emits direct
+            # listing children: clients can forge form data.
+            if target.parent != base:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Every selected item must be in the current folder.",
+                )
+            selected.append(target)
+
+        try:
+            plan = plan_archive(selected, scope=None if allow_outside else root)
+        except ArchiveError as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+        return StreamingResponse(
+            iter_zip(plan),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{plan.filename}"'},
         )
 
     def _render_dir(request: Request, root: Path, target: Path) -> HTMLResponse:

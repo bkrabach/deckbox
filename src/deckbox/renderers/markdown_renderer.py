@@ -108,9 +108,7 @@ def _github_alerts_plugin(md: MarkdownIt) -> None:
                         del kids[0]
                     # Inject a title row just inside the alert div.
                     title = Token("html_block", "", 0)
-                    title.content = (
-                        f'<p class="markdown-alert-title">{kind.capitalize()}</p>'
-                    )
+                    title.content = f'<p class="markdown-alert-title">{kind.capitalize()}</p>'
                     tokens.insert(i + 1, title)
             i += 1
 
@@ -159,19 +157,68 @@ _MD = _make_md()
 # (pygments `<span class>`, heading anchors, task-list checkboxes) — survive.
 _ALLOWED_TAGS = {
     # headings / text structure
-    "h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "span", "br", "hr",
-    "blockquote", "pre", "code", "kbd", "samp", "var",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "p",
+    "div",
+    "span",
+    "br",
+    "hr",
+    "blockquote",
+    "pre",
+    "code",
+    "kbd",
+    "samp",
+    "var",
     # lists / definition lists
-    "ul", "ol", "li", "dl", "dt", "dd",
+    "ul",
+    "ol",
+    "li",
+    "dl",
+    "dt",
+    "dd",
     # inline emphasis
-    "a", "b", "i", "strong", "em", "s", "del", "ins", "sub", "sup", "mark",
-    "small", "abbr", "cite", "q", "u",
+    "a",
+    "b",
+    "i",
+    "strong",
+    "em",
+    "s",
+    "del",
+    "ins",
+    "sub",
+    "sup",
+    "mark",
+    "small",
+    "abbr",
+    "cite",
+    "q",
+    "u",
     # media / figures
-    "img", "picture", "source", "figure", "figcaption",
+    "img",
+    "picture",
+    "source",
+    "figure",
+    "figcaption",
     # tables
-    "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
+    "table",
+    "thead",
+    "tbody",
+    "tfoot",
+    "tr",
+    "th",
+    "td",
+    "caption",
+    "colgroup",
+    "col",
     # disclosure + task-list inputs
-    "details", "summary", "input",
+    "details",
+    "summary",
+    "input",
 }
 # Attributes: a generous-but-safe set. `align` powers GitHub's centred headers;
 # `class`/`id` keep pygments highlighting, heading anchors, and callouts styled.

@@ -211,15 +211,39 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
+.entry { display: flex; align-items: stretch; }
 .entry + .entry { border-top: 1px solid var(--border); }
+.entry-select {
+  display: grid; place-items: center; width: 44px; flex: 0 0 44px;
+  cursor: pointer; border-right: 1px solid transparent;
+}
+.entry-select input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .entry-link {
-  display: flex;
+  display: flex; flex: 1; min-width: 0;
   align-items: center;
   gap: 14px;
   padding: 11px 16px;
   color: var(--text);
 }
 .entry-link:hover { background: var(--surface-2); text-decoration: none; }
+.entry:has(.entry-select input:checked) .entry-link { background: var(--accent-soft); }
+.entry:has(.entry-select input:checked) .entry-select { border-right-color: var(--accent-soft); }
+
+/* Selection action: appears once something is checked; stays accessible while
+   working through a long listing without persisting beyond this page. */
+.packet-bar {
+  position: sticky; z-index: 2; top: calc(var(--topbar-h) + 10px);
+  display: flex; align-items: center; gap: 10px;
+  width: max-content; max-width: 100%; margin: 0 0 10px auto;
+  padding: 7px 8px 7px 12px; border: 1px solid var(--border-strong);
+  border-radius: 10px; background: color-mix(in srgb, var(--surface) 93%, transparent);
+  box-shadow: var(--shadow-sm); backdrop-filter: blur(8px);
+}
+.packet-count { color: var(--text-muted); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.packet-bar[hidden] { display: none; }
+.packet-download { height: 30px; padding: 0 11px; }
+.packet-download:disabled { opacity: .55; cursor: default; }
+@media (max-width: 560px) { .packet-bar { margin-left: 0; } .packet-download { padding: 0 9px; } }
 .entry-icon { display: inline-grid; place-items: center; width: 34px; height: 34px;
   border-radius: 9px; background: var(--surface-2); color: var(--text-muted); flex-shrink: 0; }
 .entry-icon .ic { width: 19px; height: 19px; }
@@ -247,8 +271,12 @@ body { min-height: 100vh; display: flex; flex-direction: column; }
 .badge-folder { background: var(--accent-soft); color: var(--accent-strong); }
 
 /* Alphabet jump nav — a sticky letter rail beside long, well-spread listings. */
-.listing.has-alpha-rail { display: flex; align-items: flex-start; gap: 12px; }
-.listing.has-alpha-rail .entries { flex: 1; min-width: 0; }
+.listing.has-alpha-rail .packet-form {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px;
+}
+.listing.has-alpha-rail .packet-bar { grid-column: 1 / -1; }
+.listing.has-alpha-rail .entries { grid-column: 1; grid-row: 2; min-width: 0; }
+.listing.has-alpha-rail .alpha-rail { grid-column: 2; grid-row: 2; }
 .alpha-rail {
   position: sticky; top: calc(var(--topbar-h) + 12px);
   display: flex; flex-direction: column; gap: 1px; flex-shrink: 0;

@@ -35,6 +35,7 @@ dependencies = [
     "mdit-py-plugins>=0.6.1",
     "linkify-it-py>=2.1.1",
     "nh3>=0.3.7",
+    "typing-extensions>=4.12.0",
 ]
 
 [project.urls]
@@ -57,3 +58,8 @@ target-version = "py311"
 [tool.pyright]
 include = ["src"]
 pythonVersion = "3.11"
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13.0",
+]

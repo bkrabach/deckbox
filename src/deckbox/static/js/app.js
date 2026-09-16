@@ -164,6 +164,31 @@
     });
   });
 
+  // ---- ZIP packet selection (directory listing, current page only) --------
+  var packetForm = document.querySelector("[data-packet-form]");
+  if (packetForm) {
+    var packetItems = Array.prototype.slice.call(packetForm.querySelectorAll("[data-packet-item]"));
+    var packetBar = packetForm.querySelector("[data-packet-bar]");
+    var packetCount = packetForm.querySelector("[data-packet-count]");
+    var packetDownload = packetForm.querySelector("[data-packet-download]");
+
+    function updatePacketSelection() {
+      var count = packetItems.filter(function (item) { return item.checked; }).length;
+      if (packetCount) packetCount.textContent = count + " selected";
+      if (packetDownload) {
+        packetDownload.disabled = count === 0;
+        var label = packetDownload.querySelector("[data-packet-label]");
+        if (label) label.textContent = count === 1 ? "Download ZIP" : "Download " + count + " items";
+      }
+      if (packetBar) packetBar.hidden = count === 0;
+    }
+
+    packetItems.forEach(function (item) { item.addEventListener("change", updatePacketSelection); });
+    packetForm.addEventListener("submit", function (event) {
+      if (!packetItems.some(function (item) { return item.checked; })) event.preventDefault();
+    });
+  }
+
   // ---- Content width toggle (file view) -----------------------------------
   var fileview = document.querySelector(".fileview[data-width]");
   var toggle = document.querySelector("[data-width-toggle]");
