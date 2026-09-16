@@ -91,16 +91,16 @@
 
 {% block scripts %}
   {% if kind == "dot" %}
-    <script src="/static/js/dot.js" defer></script>
+    <script src="/static/js/dot.js?v={{ asset_revision }}" defer></script>
   {% endif %}
   {% if kind == "jsonl" %}
-    <script src="/static/js/clusterize.min.js" defer></script>
-    <script src="/static/js/vendor/json-viewer.js" defer></script>
-    <script src="/static/js/jsonl.js" defer></script>
+    <script src="/static/js/clusterize.min.js?v={{ asset_revision }}" defer></script>
+    <script src="/static/js/vendor/json-viewer.js?v={{ asset_revision }}" defer></script>
+    <script src="/static/js/jsonl.js?v={{ asset_revision }}" defer></script>
   {% endif %}
   {% if kind == "markdown" %}
-    <script src="/static/js/vendor/json-viewer.js" defer></script>
-    <script src="/static/js/frontmatter.js" defer></script>
-    <script src="/static/js/markdown.js" defer></script>
+    <script src="/static/js/vendor/json-viewer.js?v={{ asset_revision }}" defer></script>
+    <script src="/static/js/frontmatter.js?v={{ asset_revision }}" defer></script>
+    <script src="/static/js/markdown.js?v={{ asset_revision }}" defer></script>
   {% endif %}
 {% endblock %}

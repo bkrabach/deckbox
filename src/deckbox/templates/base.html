@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{{ title }} · {{ app_name }}</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v={{ asset_revision }}">
   <link rel="stylesheet" href="/assets/highlight.css">
   <script>
     // Set theme before paint to avoid a flash.
@@ -73,7 +73,7 @@
     <span>serving <code>{{ root_name }}</code></span>
   </footer>
 
-  <script src="/static/js/app.js" defer></script>
+  <script src="/static/js/app.js?v={{ asset_revision }}" defer></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

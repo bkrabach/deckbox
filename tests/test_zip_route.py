@@ -82,6 +82,19 @@ class ZipDownloadRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["detail"], "Cross-origin ZIP download rejected")
 
+    def test_ui_assets_have_a_content_revision_to_invalidate_stale_browser_cache(self) -> None:
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(
+            response.text,
+            r'href="/static/css/style\.css\?v=[0-9a-f]{12}"',
+        )
+        self.assertRegex(
+            response.text,
+            r'src="/static/js/app\.js\?v=[0-9a-f]{12}"',
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

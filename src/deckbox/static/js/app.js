@@ -184,6 +184,9 @@
     }
 
     packetItems.forEach(function (item) { item.addEventListener("change", updatePacketSelection); });
+    // Browser history restoration may repopulate checkboxes without dispatching
+    // change, so derive the bar from the restored state on page load as well.
+    updatePacketSelection();
     packetForm.addEventListener("submit", function (event) {
       if (!packetItems.some(function (item) { return item.checked; })) event.preventDefault();
     });

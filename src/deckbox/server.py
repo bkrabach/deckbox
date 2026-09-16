@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import mimetypes
 from pathlib import Path
 
@@ -39,6 +40,20 @@ from deckbox.renderers.text_renderer import pygments_css
 _PKG_DIR = Path(__file__).resolve().parent
 _TEMPLATES = Jinja2Templates(directory=str(_PKG_DIR / "templates"))
 
+
+def _static_revision() -> str:
+    """Content revision for static browser assets, computed once per process."""
+    digest = hashlib.sha256()
+    static_dir = _PKG_DIR / "static"
+    for path in sorted(static_dir.rglob("*")):
+        if path.is_file():
+            digest.update(path.relative_to(static_dir).as_posix().encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:12]
+
+
+_STATIC_REVISION = _static_revision()
+
 # Pygments token CSS, computed once. Served at /assets/highlight.css.
 _HIGHLIGHT_CSS = pygments_css()
 
@@ -69,6 +84,7 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
             "root_name": root.name or str(root),
             "allow_outside_root": allow_outside,
             "home_hint": str(root),
+            "asset_revision": _STATIC_REVISION,
         }
 
     def render_view(request: Request, target: Path, path: str) -> HTMLResponse:
