@@ -1,15 +1,4 @@
-"""Configuration resolution for Deckbox.
-
-Precedence (first non-None wins), applied per setting:
-
-    1. CLI flag (passed explicitly)
-    2. Environment variable (DECKBOX_*)
-    3. Config file (~/.config/deckbox/config.yaml)
-    4. Hardcoded default
-
-For the served directory specifically, the final fallback is the current
-working directory (so running without any configuration serves the cwd).
-"""
+"""Configuration resolution for Deckbox."""
 
 from __future__ import annotations
 
@@ -17,23 +6,18 @@ import copy
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import yaml
 
 CONFIG_DIR = Path(os.environ.get("DECKBOX_CONFIG_DIR", str(Path.home() / ".config" / "deckbox")))
 CONFIG_PATH = CONFIG_DIR / "config.yaml"
 
-# Only these keys are recognised in the config file. Unknown keys are ignored
-# so that a file written by a newer/older version never corrupts resolution.
 DEFAULTS: dict = {
-    "dir": None,  # None => fall back to current working directory
+    "dir": None,
     "host": "0.0.0.0",
     "port": 8000,
     "log_level": "info",
-    # When False, browsing is confined to the served directory. When True, the
-    # "Go to path" box can jump anywhere the launching user can read (above the
-    # root, elsewhere on the machine). Off by default — turning it on exposes the
-    # whole filesystem-as-you to anyone who can authenticate.
     "allow_outside_root": False,
     "tls_hostnames": [],
     "tls_ips": [],
@@ -77,6 +61,14 @@ def _string_list(value: object, *, key: str) -> list[str]:
     return value
 
 
+def parse_string_list(value: str, *, key: str) -> list[str]:
+    """Parse a config CLI value without accepting empty list entries."""
+    values = [item.strip() for item in value.split(",")]
+    if not all(values):
+        raise ValueError(f"{key} must be a comma-separated list of nonempty strings")
+    return values
+
+
 def load_config_file() -> dict:
     """Load known keys from the YAML config file. Missing/corrupt => {}."""
     try:
@@ -87,7 +79,7 @@ def load_config_file() -> dict:
         return {}
     if not isinstance(raw, dict):
         return {}
-    known = {k: raw[k] for k in DEFAULTS if k in raw}
+    known = {key: raw[key] for key in DEFAULTS if key in raw}
     for key in ("tls_hostnames", "tls_ips"):
         if key in known:
             known[key] = _string_list(known[key], key=key)
@@ -101,32 +93,36 @@ def save_config_file(data: dict) -> Path:
         if key in data and data[key] is not None:
             merged[key] = data[key]
     CONFIG_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-    tmp = CONFIG_PATH.with_suffix(".yaml.tmp")
-    tmp.write_text(
-        yaml.safe_dump(merged, sort_keys=True, default_flow_style=False),
-        encoding="utf-8",
-    )
-    tmp.chmod(0o600)
-    os.replace(tmp, CONFIG_PATH)
+    temporary = CONFIG_PATH.with_suffix(".yaml.tmp")
+    try:
+        temporary.write_text(
+            yaml.safe_dump(merged, sort_keys=True, default_flow_style=False), encoding="utf-8"
+        )
+        temporary.chmod(0o600)
+        os.replace(temporary, CONFIG_PATH)
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
     return CONFIG_PATH
 
 
 def _env(key: str) -> str | None:
-    env_name = _ENV_KEYS[key]
-    val = os.environ.get(env_name)
-    return val if val not in (None, "") else None
+    value = os.environ.get(_ENV_KEYS[key])
+    return value if value not in (None, "") else None
 
 
-def _pick(key: str, flag_value):
+def _pick(key: str, flag_value: object) -> object:
     """Resolve one setting by precedence: flag > env > file > default."""
     if flag_value is not None:
         return flag_value
-    env_val = _env(key)
-    if env_val is not None:
-        return env_val
-    file_cfg = load_config_file()
-    if file_cfg.get(key) is not None:
-        return file_cfg[key]
+    environment_value = _env(key)
+    if environment_value is not None:
+        return environment_value
+    file_config = load_config_file()
+    if file_config.get(key) is not None:
+        return file_config[key]
     return DEFAULTS[key]
 
 
@@ -141,21 +137,20 @@ def resolve(
     tls_ips: tuple[str, ...] = (),
 ) -> ResolvedConfig:
     """Resolve all settings. Explicit (non-None) args are CLI-flag overrides."""
-    raw_dir = _pick("dir", directory)
-    resolved_dir = Path(raw_dir).expanduser().resolve() if raw_dir else Path.cwd()
-
-    raw_port = _pick("port", port)
+    raw_directory = cast(str | os.PathLike[str] | None, _pick("dir", directory))
+    resolved_directory = Path(raw_directory).expanduser().resolve() if raw_directory else Path.cwd()
+    raw_port = cast(str | int, _pick("port", port))
     try:
         resolved_port = int(raw_port)
     except (TypeError, ValueError):
         resolved_port = DEFAULTS["port"]
-
+    file_config = load_config_file()
     return ResolvedConfig(
-        directory=resolved_dir,
+        directory=resolved_directory,
         host=str(_pick("host", host)),
         port=resolved_port,
         log_level=str(_pick("log_level", log_level)),
         allow_outside_root=_coerce_bool(_pick("allow_outside_root", allow_outside_root)),
-        tls_hostnames=tuple(tls_hostnames or load_config_file().get("tls_hostnames", ())),
-        tls_ips=tuple(tls_ips or load_config_file().get("tls_ips", ())),
+        tls_hostnames=tuple(tls_hostnames or file_config.get("tls_hostnames", ())),
+        tls_ips=tuple(tls_ips or file_config.get("tls_ips", ())),
     )

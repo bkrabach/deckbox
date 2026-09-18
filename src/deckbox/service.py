@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from deckbox.config import ResolvedConfig, save_config_file
+from deckbox.tls import TLSError, require_tls, tls_paths
 
 SERVICE_NAME = "deckbox.service"
 USER_UNIT_DIR = Path.home() / ".config" / "systemd" / "user"
@@ -22,13 +23,18 @@ def systemctl_available() -> bool:
 def resolve_tool_bin() -> list[str]:
     """Command prefix to invoke deckbox. Prefer the installed script."""
     which = shutil.which("deckbox")
-    if which:
-        return [which]
-    return [sys.executable, "-m", "deckbox"]
+    return [which] if which else [sys.executable, "-m", "deckbox"]
 
 
 def _run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(args, text=True, capture_output=True, check=check)
+
+
+def _require_tls(cfg: ResolvedConfig) -> None:
+    try:
+        require_tls(tls_paths(), hostnames=cfg.tls_hostnames, ip_addresses=cfg.tls_ips)
+    except TLSError as exc:
+        raise RuntimeError("Deckbox TLS is not ready; run 'deckbox setup-tls ...' first.") from exc
 
 
 def _unit_text(cfg: ResolvedConfig) -> str:
@@ -43,8 +49,6 @@ def _unit_text(cfg: ResolvedConfig) -> str:
         "--log-level",
         cfg.log_level,
     ]
-    # Bake install-time config into ExecStart as explicit args (systemd does not
-    # propagate the installing shell's environment reliably).
     if cfg.allow_outside_root:
         exec_cmd.append("--allow-outside-root")
     exec_start = " ".join(_shlex_quote(part) for part in exec_cmd)
@@ -59,6 +63,7 @@ Type=simple
 ExecStart={exec_start}
 WorkingDirectory={cfg.directory}
 Environment=PATH={path_env}
+UMask=0077
 Restart=on-failure
 RestartSec=2
 
@@ -74,10 +79,10 @@ def _shlex_quote(value: str) -> str:
 
 
 def install(cfg: ResolvedConfig, *, enable_linger: bool = True) -> Path:
-    """Write the unit, persist config, enable + start the service."""
+    """Write the HTTPS-only unit, persist config, enable + start the service."""
+    _require_tls(cfg)
     if not systemctl_available():
         raise RuntimeError("systemctl not found — systemd --user services need systemd.")
-    # Persist chosen settings so `deckbox run`/`status` agree with the service.
     save_config_file(
         {
             "dir": str(cfg.directory),
@@ -85,14 +90,15 @@ def install(cfg: ResolvedConfig, *, enable_linger: bool = True) -> Path:
             "port": cfg.port,
             "log_level": cfg.log_level,
             "allow_outside_root": cfg.allow_outside_root,
+            "tls_hostnames": list(cfg.tls_hostnames),
+            "tls_ips": list(cfg.tls_ips),
         }
     )
     USER_UNIT_DIR.mkdir(parents=True, exist_ok=True)
-    UNIT_PATH.write_text(_unit_text(cfg))
+    UNIT_PATH.write_text(_unit_text(cfg), encoding="utf-8")
     _run(["systemctl", "--user", "daemon-reload"])
     _run(["systemctl", "--user", "enable", "--now", SERVICE_NAME])
     if enable_linger:
-        # Best-effort: lets the service run without an active login session.
         _run(["loginctl", "enable-linger", os.environ.get("USER", "")], check=False)
     return UNIT_PATH
 
@@ -107,7 +113,8 @@ def uninstall() -> bool:
     return existed
 
 
-def start() -> None:
+def start(cfg: ResolvedConfig) -> None:
+    _require_tls(cfg)
     _run(["systemctl", "--user", "start", SERVICE_NAME])
 
 
@@ -115,7 +122,8 @@ def stop() -> None:
     _run(["systemctl", "--user", "stop", SERVICE_NAME], check=False)
 
 
-def restart() -> None:
+def restart(cfg: ResolvedConfig) -> None:
+    _require_tls(cfg)
     _run(["systemctl", "--user", "restart", SERVICE_NAME])
 
 
