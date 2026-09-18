@@ -35,6 +35,8 @@ DEFAULTS: dict = {
     # root, elsewhere on the machine). Off by default — turning it on exposes the
     # whole filesystem-as-you to anyone who can authenticate.
     "allow_outside_root": False,
+    "tls_hostnames": [],
+    "tls_ips": [],
 }
 
 _ENV_KEYS = {
@@ -55,6 +57,8 @@ class ResolvedConfig:
     port: int
     log_level: str
     allow_outside_root: bool = False
+    tls_hostnames: tuple[str, ...] = ()
+    tls_ips: tuple[str, ...] = ()
 
     @property
     def dir_display(self) -> str:
@@ -67,17 +71,27 @@ def _coerce_bool(value: object) -> bool:
     return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _string_list(value: object, *, key: str) -> list[str]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{key} must be a list of strings")
+    return value
+
+
 def load_config_file() -> dict:
     """Load known keys from the YAML config file. Missing/corrupt => {}."""
     try:
-        raw = yaml.safe_load(CONFIG_PATH.read_text())
+        raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
     except (yaml.YAMLError, OSError):
         return {}
     if not isinstance(raw, dict):
         return {}
-    return {k: raw[k] for k in DEFAULTS if k in raw}
+    known = {k: raw[k] for k in DEFAULTS if k in raw}
+    for key in ("tls_hostnames", "tls_ips"):
+        if key in known:
+            known[key] = _string_list(known[key], key=key)
+    return known
 
 
 def save_config_file(data: dict) -> Path:
@@ -88,7 +102,10 @@ def save_config_file(data: dict) -> Path:
             merged[key] = data[key]
     CONFIG_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     tmp = CONFIG_PATH.with_suffix(".yaml.tmp")
-    tmp.write_text(yaml.safe_dump(merged, sort_keys=True, default_flow_style=False))
+    tmp.write_text(
+        yaml.safe_dump(merged, sort_keys=True, default_flow_style=False),
+        encoding="utf-8",
+    )
     tmp.chmod(0o600)
     os.replace(tmp, CONFIG_PATH)
     return CONFIG_PATH
@@ -120,6 +137,8 @@ def resolve(
     port: int | None = None,
     log_level: str | None = None,
     allow_outside_root: bool | None = None,
+    tls_hostnames: tuple[str, ...] = (),
+    tls_ips: tuple[str, ...] = (),
 ) -> ResolvedConfig:
     """Resolve all settings. Explicit (non-None) args are CLI-flag overrides."""
     raw_dir = _pick("dir", directory)
@@ -137,4 +156,6 @@ def resolve(
         port=resolved_port,
         log_level=str(_pick("log_level", log_level)),
         allow_outside_root=_coerce_bool(_pick("allow_outside_root", allow_outside_root)),
+        tls_hostnames=tuple(tls_hostnames or load_config_file().get("tls_hostnames", ())),
+        tls_ips=tuple(tls_ips or load_config_file().get("tls_ips", ())),
     )
