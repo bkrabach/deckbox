@@ -1,19 +1,15 @@
 # Deckbox
 
-A pleasant, modern web viewer for a folder of files. Point it at a directory,
-open a browser, and browse — with first-class rendering for Markdown, PDF, DOCX,
-JSON, source code, HTML, and an elegant interactive renderer for GraphViz DOT
+Deckbox is a modern web viewer for a directory of files. It renders Markdown,
+PDF, DOCX, JSON, source code, HTML, images, and interactive GraphViz DOT
 graphs.
 
-- **Zero-config** — run it in any folder; it serves the current directory.
-- **Modern UI** — clean light/dark themes, breadcrumb navigation, live filter.
-- **Rich renderers** — Markdown, JSON, code (syntax-highlighted), DOCX, PDF,
-  images, and raw HTML — plus a pan/zoom **DOT graph** viewer.
-- **Safe by default** — binds `0.0.0.0`, but any non-localhost request must
-  authenticate via **PAM as the user who launched the server**. Localhost is
-  never challenged.
-- **Runs standalone or as a service** — `deckbox run` for ad-hoc use, or install
-  a `systemd --user` service that survives logout and reboot.
+- **Native HTTPS only** — Deckbox owns a dedicated local CA and leaf certificate.
+- **PAM authentication** — all browsing and file routes require HTTP Basic
+  authentication as the exact OS user that launched Deckbox.
+- **Rich rendering** — Markdown, JSON, code, DOCX, PDF, images, HTML, and DOT.
+- **Standalone or service** — use `deckbox run` ad hoc or install a
+  `systemd --user` service.
 
 ## Install
 
@@ -21,149 +17,192 @@ graphs.
 # From PyPI (once published)
 uv tool install deckbox
 
-# Or straight from GitHub
+# Or from the source repository
 uv tool install git+https://github.com/bkrabach/deckbox
 ```
 
-This puts a `deckbox` command on your PATH. `python -m deckbox` also works.
+This installs a `deckbox` command on your `PATH`. `python -m deckbox` also
+works.
 
 ## Quick start
 
-```bash
-cd ~/some/folder
-deckbox                 # serves this folder at http://0.0.0.0:8000
-
-deckbox ~/notes         # or point it at a folder directly (positional path)
-```
-
-Then open <http://localhost:8000>.
-
-Serve a specific directory or change the address:
+Deckbox must have its local TLS material before it can start:
 
 ```bash
-deckbox ~/notes --port 9000         # positional path
-deckbox run --dir ~/notes --port 9000   # --dir also works
-deckbox run --host 127.0.0.1        # localhost-only, no auth
+cd ./shared-files
+deckbox setup-tls
+deckbox
 ```
 
-The served directory can be given as a positional `PATH` (`deckbox ~/notes`,
-`deckbox doctor ~/notes`) or with `--dir`. If both are given, the positional
-path wins.
+Then open <https://localhost:8000>. Deckbox does not provide an HTTP listener,
+HTTP redirect, or fallback.
+
+Serve a different directory or address:
+
+```bash
+deckbox ./notes --port 9000
+deckbox run --dir ./notes --host 127.0.0.1 --port 9000
+```
+
+The served directory may be a positional `PATH` or supplied with `--dir`. When
+both are given, the positional path wins.
+
+## TLS setup and trust
+
+`deckbox setup-tls` is the only command that creates or changes TLS material.
+It creates a persistent Deckbox-local CA and a renewable server certificate in
+the Deckbox configuration directory. Deckbox never shares certificate material
+with Muxplex, Amplifier Unified, or another application.
+
+For a network-facing server, specify every DNS name and IP address clients use:
+
+```bash
+deckbox setup-tls \
+  --hostname files.example.test \
+  --hostname node.example.test \
+  --ip 192.0.2.10
+```
+
+Inspect without writing:
+
+```bash
+deckbox setup-tls --status
+deckbox doctor
+```
+
+After changing requested names, renew the leaf certificate:
+
+```bash
+deckbox setup-tls --renew \
+  --hostname files.example.test \
+  --ip 192.0.2.10
+deckbox service restart
+```
+
+Renewal replaces only the leaf certificate and key. It retains the CA, so a
+client that already trusts the Deckbox CA does not need a new trust-root
+installation.
+
+The unauthenticated bootstrap endpoints are exactly:
+
+- <https://HOST:PORT/health> — Deckbox health JSON.
+- <https://HOST:PORT/setup> — CA fingerprint and platform trust instructions.
+- <https://HOST:PORT/ca.crt> — the fixed public Deckbox CA certificate.
+
+Every other endpoint, including `/`, `/view/*`, `/raw/*`, `/download/*`,
+`/download-zip`, `/api/*`, `/assets/*`, and `/static/*`, requires PAM-backed
+HTTP Basic authentication as the exact user that launched Deckbox. There is no
+localhost authentication bypass and no `--no-auth` option.
+
+### macOS trust flow
+
+1. Open <https://HOST:PORT/setup> and compare its displayed SHA-256 fingerprint
+   out of band with `deckbox setup-tls --status` or `deckbox doctor`.
+2. Download the CA from <https://HOST:PORT/ca.crt>.
+3. Open the downloaded certificate in **Keychain Access**, add it to the System
+   keychain, and set it to **Always Trust**.
+4. Fully quit and restart the browser before reopening the HTTPS URL.
+
+The command-line equivalent is:
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain ./deckbox-ca.crt
+```
+
+Trust only the downloaded, fingerprint-verified Deckbox CA. The CA download
+contains no private key.
+
+Deckbox deliberately does not enable HSTS. It also does not provide an HTTP
+fallback or HTTP-to-HTTPS redirect.
 
 ## Commands
 
 | Command | Purpose |
-|---------|---------|
-| `deckbox` / `deckbox run` | Start the web server (default action) |
-| `deckbox open` | Open the served URL in a web browser |
-| `deckbox doctor` | Diagnostics: deps, served dir, graphviz, PAM, port |
-| `deckbox status` | Show resolved config, service state, and port status |
-| `deckbox update` | Update to the latest version (via `uv`) |
-| `deckbox service install` | Install & start a `systemd --user` service |
+| --- | --- |
+| `deckbox` / `deckbox run` | Start the HTTPS web server (default action) |
+| `deckbox setup-tls` | Create Deckbox TLS material |
+| `deckbox setup-tls --renew` | Replace only the leaf certificate |
+| `deckbox setup-tls --status` | Inspect TLS material without writing |
+| `deckbox open` | Open the HTTPS URL in a browser |
+| `deckbox doctor` | Check dependencies, TLS, and trusted live HTTPS health |
+| `deckbox status` | Show configuration, service, TLS, and listener state |
+| `deckbox service install` | Install and start a `systemd --user` service |
 | `deckbox service {uninstall,start,stop,restart,status,logs}` | Manage the service |
 | `deckbox config {show,path,set,unset}` | Inspect or edit configuration |
+| `deckbox update` | Update Deckbox using `uv` |
 
 ### Run flags
 
-```
---dir PATH        Directory to serve
---host HOST       Bind address (default 0.0.0.0)
---port PORT       Bind port (default 8000)
---log-level LVL   uvicorn log level (default info)
---no-auth         Disable PAM auth even for remote clients (trusted networks only)
+```text
+--dir PATH                 Directory to serve
+--host HOST                Bind address (default 0.0.0.0)
+--port PORT                Bind port (default 8000)
+--log-level LEVEL          Uvicorn log level (default info)
+--allow-outside-root       Allow Go to path outside the served directory
 ```
 
 ## Configuration
 
-Every setting resolves by precedence (first wins):
-
-1. **CLI flag** (e.g. `--dir`)
-2. **Environment variable** (`DECKBOX_DIR`, `DECKBOX_HOST`, `DECKBOX_PORT`, `DECKBOX_LOG_LEVEL`)
-3. **Config file** — `~/.config/deckbox/config.yaml`
-4. **Default** — for the served directory, the fallback is the current working directory
-
-```bash
-deckbox config set dir ~/notes
-deckbox config set port 9000
-deckbox config show
-deckbox config path
-```
-
-Example `~/.config/deckbox/config.yaml`:
+Settings resolve by precedence: CLI flag, environment variable, configuration
+file, then default. The standard variables are `DECKBOX_DIR`, `DECKBOX_HOST`,
+`DECKBOX_PORT`, `DECKBOX_LOG_LEVEL`, and `DECKBOX_ALLOW_OUTSIDE_ROOT`.
 
 ```yaml
-dir: /home/me/notes
+dir: ./shared-files
 host: 0.0.0.0
 port: 8000
 log_level: info
+tls_hostnames:
+  - files.example.test
+tls_ips:
+  - 192.0.2.10
 ```
 
-## Authentication
-
-- Requests from **localhost** (`127.0.0.1` / `::1`) are **never** challenged.
-- Requests from **any other host** must pass **HTTP Basic auth**, where the
-  username must be the OS user that launched the server and the password is
-  verified through **PAM** (the `login` service). The client IP is read from
-  the socket, so it cannot be spoofed with headers.
-
-This means: run it, and it "just works" locally; reach it over the network and
-your browser asks you to log in as yourself.
-
-> PAM authentication requires the `python-pam` dependency (installed
-> automatically) and a working PAM stack. Run `deckbox doctor` to verify.
+Use `deckbox config show` to inspect the resolved values. TLS names should be
+changed through `deckbox setup-tls --renew`, which preserves certificate and
+configuration consistency.
 
 ## Running as a service
 
-Install a per-user systemd service that serves a chosen directory and restarts
-on failure:
+First complete explicit TLS setup. `deckbox service install` refuses to install
+or start a service until valid Deckbox TLS material exists:
 
 ```bash
-deckbox service install --dir ~/notes --port 8000
+deckbox setup-tls --hostname files.example.test --ip 192.0.2.10
+deckbox service install --dir ./shared-files --port 8000
 deckbox service status
-deckbox service logs
-deckbox service stop
-deckbox service uninstall
 ```
 
-`service install` persists your chosen directory/host/port to the config file
-and enables lingering (best effort) so the service runs without an active login.
+Service installation persists the selected directory, host, port, and TLS name
+configuration, then enables the per-user service. Installing or restarting a
+live service is a deliberate operational cutover after `setup-tls --status`,
+`doctor`, and an HTTPS health check have been verified.
 
 ## Rendering
 
-| Type | How it's shown |
-|------|----------------|
-| Markdown (`.md`) | Rich HTML (tables, task lists, admonitions, TOC, code highlighting) |
-| GraphViz (`.dot`, `.gv`) | Themed SVG in an interactive pan/zoom/fit viewer with a source toggle |
+| Type | How it is shown |
+| --- | --- |
+| Markdown (`.md`) | Rich HTML with tables, task lists, admonitions, TOC, and code highlighting |
+| GraphViz (`.dot`, `.gv`) | Themed SVG with pan, zoom, fit, source, and SVG download |
 | JSON (`.json`) | Pretty-printed and syntax-highlighted |
-| Code (many) | Syntax-highlighted via Pygments |
+| Code | Syntax-highlighted with Pygments |
 | DOCX (`.docx`) | Converted to clean semantic HTML |
-| PDF (`.pdf`) | Native browser viewer (sandboxed iframe) |
-| HTML (`.html`) | Rendered in a sandboxed iframe, with an "open raw" escape hatch |
+| PDF (`.pdf`) | Native browser viewer in a sandboxed frame |
+| HTML (`.html`) | Sandboxed frame with a raw-file option |
 | Images | Displayed inline |
-| Anything else | Offered as a download |
+| Other files | Offered as downloads |
 
-### GraphViz DOT
-
-DOT files are rendered with a tasteful default theme (rounded, filled nodes; a
-modern font stack applied to the SVG) — your explicit attributes always win.
-The result is an interactive viewer: scroll to zoom, drag to pan, **Fit**,
-**100%**, **Source**, and **Download SVG**. Requires the `dot` binary
-([GraphViz](https://graphviz.org)); without it, the source is shown instead.
-
-```bash
-# Debian/Ubuntu
-sudo apt install graphviz
-# macOS
-brew install graphviz
-```
+DOT rendering requires the `dot` binary from
+[GraphViz](https://graphviz.org). Without it, Deckbox shows source text.
 
 ## Development
 
 ```bash
 git clone https://github.com/bkrabach/deckbox
 cd deckbox
-uv venv && source .venv/bin/activate
-uv pip install -e .
+uv sync --all-groups
+deckbox setup-tls
 deckbox run --dir .
 ```
 

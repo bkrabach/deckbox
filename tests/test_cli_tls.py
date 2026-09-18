@@ -283,7 +283,7 @@ class CliTlsTests(unittest.TestCase):
         self.assertFalse(self.config_path.with_suffix(".yaml.tmp").exists())
         self.assertEqual({path: path.read_bytes() for path in before}, before)
 
-    def test_status_with_ipv6_host_reports_normally(self) -> None:
+    def test_status_with_ipv6_host_reports_missing_tls_without_address_family_error(self) -> None:
         args = argparse.Namespace(
             path=None,
             dir=str(self.directory),
@@ -299,7 +299,8 @@ class CliTlsTests(unittest.TestCase):
         ):
             exit_code = cli.status(args)
 
-        self.assertEqual(exit_code, 0)
+        self.assertEqual(exit_code, 1)
+        self.assertIn("TLS readiness : not ready", stdout.getvalue())
         self.assertIn("not listening", stdout.getvalue())
 
     def test_setup_tls_renew_replaces_leaf_without_rotating_ca(self) -> None:

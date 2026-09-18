@@ -14,9 +14,11 @@ from deckbox import __version__
 from deckbox.auth import launch_user, pam_available
 from deckbox.config import (
     DEFAULTS,
+    ConfigValidationError,
     ResolvedConfig,
     load_config_file,
     parse_string_list,
+    required_tls_identities,
     resolve,
     save_config_file,
 )
@@ -83,7 +85,8 @@ def run(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        tls_status = require_tls(tls_paths(), hostnames=cfg.tls_hostnames, ip_addresses=cfg.tls_ips)
+        hostnames, ip_addresses = required_tls_identities(cfg)
+        tls_status = require_tls(tls_paths(), hostnames=hostnames, ip_addresses=ip_addresses)
     except TLSError:
         print(
             "error: TLS is not configured or invalid. Run 'deckbox setup-tls ...' first.",
@@ -135,7 +138,7 @@ def _tls_config(args: argparse.Namespace) -> tuple[ResolvedConfig, bool, bool]:
 
 
 def _print_tls_status(status: TLSStatus) -> None:
-    print(f"  readiness : {'ready' if status.ready else 'not ready'}")
+    print(f"  TLS readiness : {'ready' if status.ready else 'not ready'}")
     print(f"  TLS path  : {status.paths.directory}")
     print(f"  CA SHA-256: {status.ca_fingerprint or 'unavailable'}")
     print(f"  leaf expiry: {status.leaf_not_after or 'unavailable'}")
@@ -183,7 +186,8 @@ def setup_tls(args: argparse.Namespace) -> int:
     try:
         cfg, hostnames_supplied, ips_supplied = _tls_config(args)
         paths = tls_paths()
-        inspected = inspect_tls(paths, hostnames=cfg.tls_hostnames, ip_addresses=cfg.tls_ips)
+        hostnames, ip_addresses = required_tls_identities(cfg)
+        inspected = inspect_tls(paths, hostnames=hostnames, ip_addresses=ip_addresses)
     except (TLSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -223,8 +227,8 @@ def setup_tls(args: argparse.Namespace) -> int:
         snapshot = _snapshot_tls(paths)
         issued = setup_local_ca(
             paths,
-            hostnames=cfg.tls_hostnames,
-            ip_addresses=cfg.tls_ips,
+            hostnames=hostnames,
+            ip_addresses=ip_addresses,
             renew=args.renew,
         )
     except (TLSError, ValueError, OSError) as exc:
@@ -252,13 +256,29 @@ def setup_tls(args: argparse.Namespace) -> int:
 def doctor(args: argparse.Namespace) -> int:
     from deckbox.doctor import run_doctor
 
-    return run_doctor(_runtime_config(args))
+    try:
+        cfg = _runtime_config(args)
+    except ConfigValidationError as exc:
+        print(
+            f"error: invalid TLS configuration: {exc}; run 'deckbox setup-tls ...'.",
+            file=sys.stderr,
+        )
+        return 1
+    return run_doctor(cfg)
 
 
 def status(args: argparse.Namespace) -> int:
+    from deckbox.doctor import probe_https_health
     from deckbox import service
 
-    cfg = _runtime_config(args)
+    try:
+        cfg = _runtime_config(args)
+    except ConfigValidationError as exc:
+        print(
+            f"error: invalid TLS configuration: {exc}; run 'deckbox setup-tls ...'.",
+            file=sys.stderr,
+        )
+        return 1
     print(f"\n{_BOLD}Deckbox status{_RESET}")
     print(f"  serving directory : {cfg.directory}")
     print(f"  listen address    : {_served_url(cfg)}")
@@ -270,11 +290,23 @@ def status(args: argparse.Namespace) -> int:
         else ("installed (inactive)" if installed else "not installed")
     )
     print(f"  systemd service   : {state}")
+    hostnames, ip_addresses = required_tls_identities(cfg)
+    tls_status = inspect_tls(tls_paths(), hostnames=hostnames, ip_addresses=ip_addresses)
+    _print_tls_status(tls_status)
     listening = _is_listening(
-        "127.0.0.1" if cfg.host in ("0.0.0.0", "::", "") else cfg.host, cfg.port
+        "127.0.0.1" if cfg.host in ("0.0.0.0", "") else "::1" if cfg.host == "::" else cfg.host,
+        cfg.port,
     )
-    print(f"  port {cfg.port:<12}: {'listening' if listening else 'not listening'}\n")
-    return 0
+    print(f"  port {cfg.port:<12}: {'listening' if listening else 'not listening'}")
+    if not tls_status.ready:
+        print("  HTTPS health      : skipped — TLS material is not ready\n")
+        return 1
+    if not listening:
+        print("  HTTPS health      : skipped — listener not running\n")
+        return 0
+    probe = probe_https_health(cfg, tls_status)
+    print(f"  HTTPS health      : {probe.detail}\n")
+    return 0 if probe.ok else 1
 
 
 def _is_listening(host: str, port: int) -> bool:

@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from deckbox.config import ResolvedConfig, save_config_file
+from deckbox.config import ResolvedConfig, required_tls_identities, save_config_file
 from deckbox.tls import TLSError, require_tls, tls_paths
 
 SERVICE_NAME = "deckbox.service"
@@ -32,7 +32,8 @@ def _run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess:
 
 def _require_tls(cfg: ResolvedConfig) -> None:
     try:
-        require_tls(tls_paths(), hostnames=cfg.tls_hostnames, ip_addresses=cfg.tls_ips)
+        hostnames, ip_addresses = required_tls_identities(cfg)
+        require_tls(tls_paths(), hostnames=hostnames, ip_addresses=ip_addresses)
     except TLSError as exc:
         raise RuntimeError("Deckbox TLS is not ready; run 'deckbox setup-tls ...' first.") from exc
 

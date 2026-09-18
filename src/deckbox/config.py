@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import ipaddress
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,22 @@ class ResolvedConfig:
         return str(self.directory)
 
 
+class ConfigValidationError(ValueError):
+    """A persisted Deckbox configuration value has the wrong schema."""
+
+
+def required_tls_identities(cfg: ResolvedConfig) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return configured TLS names plus a concrete bind address, by kind."""
+    hostnames = list(cfg.tls_hostnames)
+    ip_addresses = list(cfg.tls_ips)
+    if cfg.host not in ("0.0.0.0", "::", ""):
+        try:
+            ip_addresses.append(str(ipaddress.ip_address(cfg.host)))
+        except ValueError:
+            hostnames.append(cfg.host)
+    return tuple(dict.fromkeys(hostnames)), tuple(dict.fromkeys(ip_addresses))
+
+
 def _coerce_bool(value: object) -> bool:
     if isinstance(value, bool):
         return value
@@ -57,7 +74,7 @@ def _coerce_bool(value: object) -> bool:
 
 def _string_list(value: object, *, key: str) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"{key} must be a list of strings")
+        raise ConfigValidationError(f"{key} must be a list of strings")
     return value
 
 

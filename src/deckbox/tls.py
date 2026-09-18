@@ -48,6 +48,7 @@ class TLSIssue(str, Enum):
     LEAF_INVALID = "leaf_invalid"
     LEAF_OUTLIVES_ISSUER = "leaf_outlives_issuer"
     MISSING_SAN_COVERAGE = "missing_san_coverage"
+    INVALID_CONFIGURATION = "invalid_configuration"
 
 
 @dataclass(frozen=True)
@@ -240,7 +241,14 @@ def inspect_tls(
     ip_addresses: tuple[str, ...],
 ) -> TLSStatus:
     """Read and validate existing TLS material without changing the filesystem."""
-    dns_names, addresses = _names(hostnames, ip_addresses)
+    try:
+        dns_names, addresses = _names(hostnames, ip_addresses)
+    except TLSError as error:
+        return _not_ready(
+            paths,
+            TLSIssue.INVALID_CONFIGURATION,
+            f"Deckbox TLS configuration is invalid: {error}",
+        )
     expected_paths = (paths.ca_cert, paths.ca_key, paths.leaf_cert, paths.leaf_key)
     present = tuple(path.exists() for path in expected_paths)
     if not any(present):
