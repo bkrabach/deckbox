@@ -99,6 +99,19 @@ def ca_bytes(paths: TLSPaths) -> bytes | None:
     return certificate_bytes
 
 
+def _certificate_fingerprint(certificate: x509.Certificate) -> str:
+    """Return the canonical SHA-256 fingerprint for an X.509 certificate."""
+    return certificate.fingerprint(hashes.SHA256()).hex()
+
+
+def ca_fingerprint(paths: TLSPaths) -> str | None:
+    """Return the canonical fingerprint of the fixed valid CA certificate."""
+    certificate_bytes = ca_bytes(paths)
+    if certificate_bytes is None:
+        return None
+    return _certificate_fingerprint(x509.load_pem_x509_certificate(certificate_bytes))
+
+
 def _names(
     hostnames: tuple[str, ...], ip_addresses: tuple[str, ...]
 ) -> tuple[tuple[str, ...], tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, ...]]:
@@ -171,7 +184,7 @@ def _status(
         ready=True,
         detail="Deckbox TLS material is ready.",
         paths=paths,
-        ca_fingerprint=ca_certificate.fingerprint(hashes.SHA256()).hex(),
+        ca_fingerprint=_certificate_fingerprint(ca_certificate),
         dns_names=dns_names,
         ip_addresses=tuple(str(address) for address in addresses),
         leaf_not_after=leaf_certificate.not_valid_after_utc,
@@ -207,9 +220,7 @@ def _not_ready(
         detail=f"{detail} Run `deckbox setup-tls` to remediate.",
         paths=paths,
         ca_fingerprint=(
-            ca_certificate.fingerprint(hashes.SHA256()).hex()
-            if ca_certificate is not None
-            else None
+            _certificate_fingerprint(ca_certificate) if ca_certificate is not None else None
         ),
         dns_names=dns_names,
         ip_addresses=ip_addresses,
