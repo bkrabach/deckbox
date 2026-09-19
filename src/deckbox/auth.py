@@ -1,7 +1,8 @@
 """Authentication for Deckbox.
 
 Policy:
-  * EVERY request must authenticate with HTTP Basic auth (except /health),
+  * EVERY request must authenticate with HTTP Basic auth except the fixed
+    /health, /setup, and /ca.crt bootstrap endpoints,
     and the username MUST be the OS user that launched the server, verified
     via PAM. There is NO localhost bypass.
 
@@ -10,7 +11,7 @@ is genuinely local. Any userspace proxy — `ssh -L`, socat, a container port
 forward — re-originates the connection so the peer address is 127.0.0.1 for a
 truly *remote* caller too. muxplex shipped a security advisory
 (GHSA-7c6r-fvrh-9qp4) over exactly this trust-the-loopback-peer mistake; we
-don't repeat it. Use --no-auth to opt out for genuinely trusted local use.
+don't repeat it.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from starlette.responses import JSONResponse, Response
 
 _REALM = "Deckbox"
 # Paths reachable without auth even from remote clients.
-_PUBLIC_PATHS = frozenset({"/health"})
+_PUBLIC_PATHS = frozenset({"/health", "/setup", "/ca.crt"})
 
 
 def launch_user() -> str:

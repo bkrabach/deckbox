@@ -36,6 +36,8 @@ from deckbox.renderers import (
     render_inline,
 )
 from deckbox.renderers.text_renderer import pygments_css
+from deckbox.setup_page import render_setup_page
+from deckbox.tls import ca_bytes, ca_fingerprint, tls_paths
 
 _PKG_DIR = Path(__file__).resolve().parent
 _TEMPLATES = Jinja2Templates(directory=str(_PKG_DIR / "templates"))
@@ -65,6 +67,25 @@ def create_app(cfg: ResolvedConfig, *, auth_required: bool) -> FastAPI:
     app.state.launch_user = launch_user()
     app.state.auth_required = auth_required
     app.add_middleware(PamAuthMiddleware)
+
+    @app.get("/setup", response_class=HTMLResponse)
+    async def setup() -> HTMLResponse:
+        return HTMLResponse(
+            render_setup_page(ca_fingerprint(tls_paths())),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/ca.crt")
+    async def ca_certificate() -> Response:
+        certificate = ca_bytes(tls_paths())
+        if certificate is None:
+            raise HTTPException(status_code=404, detail="Deckbox CA certificate is not available")
+        return Response(
+            content=certificate,
+            media_type="application/x-x509-ca-cert",
+            headers={"Content-Disposition": 'attachment; filename="deckbox-ca.crt"'},
+        )
+
     app.mount("/static", StaticFiles(directory=str(_PKG_DIR / "static")), name="static")
 
     def resolve_or_404(path: str) -> Path:
